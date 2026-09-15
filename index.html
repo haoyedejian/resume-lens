@@ -1,0 +1,1378 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>简历透镜 ResumeLens</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<!-- P9 文件导入解析库：defer + 调用处判空降级，加载失败不影响其余功能 -->
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
+<style>
+  :root{
+    --bg:#F5F5F7;
+    --ink-1:#1D1D1F;
+    --ink-2:#6E6E73;
+    --ink-3:#86868B;
+    --accent:#0071E3;
+    --accent-hover:#0077ED;
+    --red:#FF3B30;
+  }
+  html,body{background-color:var(--bg);color:var(--ink-1);}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif;
+    -webkit-font-smoothing:antialiased;
+    /* 环境光背景：三层低饱和光晕，打破纯灰底的平淡 */
+    background-image:
+      radial-gradient(1100px 520px at 88% -10%, rgba(0,113,227,0.10), transparent 62%),
+      radial-gradient(900px 460px at -8% 2%, rgba(94,92,230,0.09), transparent 58%),
+      radial-gradient(760px 520px at 55% 108%, rgba(48,209,88,0.06), transparent 60%);
+    background-attachment:fixed;
+  }
+  /* 统一卡片：更柔和的双层阴影 + 发丝描边，提升层次 */
+  .rl-card{background:#fff;border-radius:20px;border:1px solid rgba(255,255,255,0.6);
+    box-shadow:0 1px 2px rgba(0,0,0,0.03),0 12px 32px rgba(15,23,42,0.07);}
+  /* 面板标题：图标 + 眉标 */
+  .panel-head{display:flex;align-items:center;gap:8px;margin-bottom:16px;}
+  .panel-head svg{flex-shrink:0;}
+  .panel-head .eyebrow{margin-bottom:0;}
+  /* 可见 Toast（复制/打印等操作反馈） */
+  .toast{position:fixed;left:50%;bottom:32px;transform:translate(-50%,16px);
+    background:rgba(29,29,31,0.92);color:#fff;padding:10px 20px;border-radius:9999px;
+    font-size:14px;z-index:60;opacity:0;pointer-events:none;max-width:min(480px,88vw);
+    transition:opacity .25s ease,transform .3s cubic-bezier(.32,.72,0,1);
+    box-shadow:0 8px 24px rgba(0,0,0,0.22);}
+  .toast.show{opacity:1;transform:translate(-50%,0);}
+  /* 维度条：每个维度独立渐变色，替代单一蓝 */
+  .dim-bar{transition:width .9s cubic-bezier(.22,.61,.36,1);}
+  .dim-bar[data-key="keywords"]{background:linear-gradient(90deg,#0071E3,#40A9FF);}
+  .dim-bar[data-key="years"]{background:linear-gradient(90deg,#248A3D,#30D158);}
+  .dim-bar[data-key="quantified"]{background:linear-gradient(90deg,#C93400,#FF9F0A);}
+  .dim-bar[data-key="hard"]{background:linear-gradient(90deg,#8944AB,#BF5AF2);}
+  .dim-bar[data-key="structure"]{background:linear-gradient(90deg,#3634A3,#7D7AFF);}
+  /* 统一过渡：弹簧曲线 400ms */
+  .trl{transition:all .4s cubic-bezier(.32,.72,0,1);}
+  /* 校验失败抖动：幅度 4px，克制 */
+  @keyframes rlshake{
+    0%,100%{transform:translateX(0);}
+    25%{transform:translateX(-4px);}
+    50%{transform:translateX(4px);}
+    75%{transform:translateX(-2px);}
+  }
+  .shake{animation:rlshake .4s cubic-bezier(.32,.72,0,1);}
+  .eyebrow{
+    font-size:13px;color:var(--ink-3);letter-spacing:.06em;font-weight:400;
+  }
+  textarea{
+    background:#fff;border:1px solid rgba(0,0,0,0.08);border-radius:12px;
+    font-size:14px;line-height:1.6;color:var(--ink-1);width:100%;resize:vertical;
+    transition:border-color .25s, box-shadow .25s;
+  }
+  textarea::placeholder{color:#C7C7CC;}
+  textarea:focus{
+    outline:none;border-color:var(--accent);
+    box-shadow:0 0 0 4px rgba(0,113,227,0.12);
+  }
+  /* 数字等宽 */
+  .tabular{font-variant-numeric:tabular-nums;}
+  /* P9 拖拽导入：accent 虚线高亮边框 */
+  #resumeInput.drag-hover{border-color:var(--accent);box-shadow:0 0 0 4px rgba(0,113,227,0.12), inset 0 0 0 2px var(--accent);}
+  /* P9 导入按钮禁用态（离线版/解析库未加载） */
+  #btnImport:disabled{opacity:.4;cursor:not-allowed;background:transparent;}
+  /* 轻量按钮：视觉 13px，热区撑到 36px */
+  .textlink{
+    font-size:13px;color:var(--accent);padding:.5rem .75rem;border-radius:9999px;
+    min-height:36px;display:inline-flex;align-items:center;gap:.25rem;
+    cursor:pointer;user-select:none;background:transparent;border:none;
+  }
+  .textlink:hover{background:rgba(0,113,227,0.08);}
+  /* P3 骨架屏：40% 透明度、240ms 微光呼吸 */
+  .sk{background:#E8E8ED;border-radius:9999px;animation:skbreath .24s ease-in-out infinite;}
+  @keyframes skbreath{0%,100%{opacity:.32;}50%{opacity:.52;}}
+  .sk-ring{width:140px;height:140px;border-radius:9999px;}
+  .sk-bar{height:12px;}
+  .sk-card{height:64px;border-radius:12px;}
+  .sk-tip{font-size:13px;color:var(--ink-3);margin-top:10px;text-align:center;}
+  /* P3 关键词 chips */
+  .chip{
+    display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:9999px;
+    font-size:13px;line-height:1.2;user-select:none;white-space:nowrap;
+  }
+  .chip-hit{background:rgba(52,199,89,.10);color:#248A3D;}
+  .chip-miss{background:rgba(255,59,48,.08);color:#D70015;border:none;}
+  .chip-miss.clickable{cursor:pointer;}
+  .chip-miss.clickable:hover{background:rgba(255,59,48,.15);}
+  .chip .gtag{font-size:11px;opacity:.62;font-weight:400;}
+  /* P4 建议卡片 */
+  .sug-card{transition:background .3s, box-shadow .3s;}
+  .sug-highlight{background:#F0F7FF;box-shadow:0 0 0 3px rgba(0,113,227,.35);}
+  /* P5 红旗卡片 */
+  .flag-card{border-left:4px solid transparent;border-radius:12px;padding:14px 16px;transition:transform .3s cubic-bezier(.32,.72,0,1), box-shadow .3s;}
+  .flag-red{border-left-color:var(--red);background:rgba(255,59,48,0.05);}
+  .flag-yellow{border-left-color:#FF9500;background:rgba(255,149,0,0.05);}
+  /* P7 成长条 */
+  .grow-up{background:rgba(52,199,89,0.10);color:#248A3D;}
+  .grow-down{background:rgba(255,149,0,0.10);color:#C93400;}
+  .grow-flat{background:#F5F5F7;color:var(--ink-2);}
+  /* P7 历史抽屉 */
+  .drawer-mask{position:fixed;inset:0;background:rgba(0,0,0,0.4);opacity:0;pointer-events:none;transition:opacity .3s ease;z-index:40;}
+
+  .drawer{position:fixed;top:0;right:0;bottom:0;width:min(400px,92vw);background:#fff;z-index:41;
+    transform:translateX(100%);transition:transform .4s cubic-bezier(.32,.72,0,1);
+    box-shadow:-8px 0 24px rgba(0,0,0,0.08);display:flex;flex-direction:column;}
+  .drawer.open{transform:translateX(0);}
+  .hist-item{transition:background .2s;}
+  .hist-item:hover{background:rgba(0,113,227,0.06);}
+  /* P7 报告按钮 */
+  .btn-primary{background:var(--accent);color:#fff;border:none;border-radius:980px;font-size:15px;font-weight:500;
+    padding:.6rem 1.4rem;min-height:40px;cursor:pointer;transition:background .2s, transform .2s;}
+  .btn-primary:hover{background:var(--accent-hover);transform:translateY(-1px);}
+  .btn-secondary{background:transparent;color:var(--accent);border:1px solid rgba(0,0,0,0.12);border-radius:980px;
+    font-size:15px;padding:.6rem 1.4rem;min-height:40px;cursor:pointer;transition:background .2s;}
+  .btn-secondary:hover{background:rgba(0,113,227,0.06);}
+  /* P7 打印：隐藏输入与按钮，保留报告色彩 */
+  @media print{
+    body{background:#fff !important;}
+    header,#inputCard,.no-print,#liveToast,.toast{display:none !important;}
+    section{box-shadow:none !important;border-radius:0;break-inside:avoid;border:1px solid #E5E5EA;}
+    #reportArea{max-width:100%;}
+    /* 保留维度条/圆环/芯片颜色，避免打印成白板 */
+    *{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  }
+  /* P8 入场动效：卡片上浮（400ms 弹簧）+ chips 错峰 40ms */
+  @keyframes riseIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}}
+  .rise-in{animation:riseIn .4s cubic-bezier(.32,.72,0,1) both;animation-delay:calc(var(--i,0)*40ms);}
+  @keyframes chipIn{from{opacity:0;transform:translateY(4px) scale(.96);}to{opacity:1;transform:none;}}
+  .chip-in{animation:chipIn .4s cubic-bezier(.32,.72,0,1) both;animation-delay:calc(var(--i,0)*40ms);}
+  /* P8 关于弹窗 */
+  .modal{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%) scale(.96);background:#fff;border-radius:18px;
+    padding:28px 24px;max-width:min(440px,88vw);z-index:41;box-shadow:0 24px 64px rgba(0,0,0,.18);
+    opacity:0;pointer-events:none;transition:opacity .2s ease, transform .2s ease;text-align:left;}
+  .modal.open{opacity:1;pointer-events:auto;transform:translate(-50%,-50%) scale(1);}
+  /* P8 关键词两列断点：768-880 保持单列，≥880 两列 */
+  @media (min-width:880px){ .kw-grid{grid-template-columns:repeat(2,minmax(0,1fr));} }
+  [hidden]{display:none !important;}
+  @media (prefers-reduced-motion: reduce){
+    *,*::before,*::after{animation-duration:.001s !important;transition-duration:.001s !important;}
+  }
+</style>
+</head>
+<body class="min-h-screen">
+
+<!-- 顶栏：毛玻璃 -->
+<header class="sticky top-0 z-30" style="background:rgba(255,255,255,0.72);backdrop-filter:blur(20px) saturate(1.8);-webkit-backdrop-filter:blur(20px) saturate(1.8);border-bottom:1px solid rgba(0,0,0,0.06);">
+  <div class="max-w-5xl mx-auto px-6 h-[52px] flex items-center justify-between">
+    <div class="flex items-center gap-2.5">
+      <span class="w-7 h-7 rounded-[9px] flex items-center justify-center shrink-0" style="background:linear-gradient(135deg,#0071E3,#5E5CE6);box-shadow:0 2px 8px rgba(0,113,227,0.35);">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" stroke="#fff" stroke-width="2.2"/><path d="M15.5 15.5 L20.5 20.5" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/></svg>
+      </span>
+      <div class="text-[17px] font-semibold tracking-tight" style="color:var(--ink-1);">简历透镜 <span class="font-normal" style="color:var(--ink-3);">ResumeLens</span></div>
+    </div>
+    <div class="flex items-center gap-1">
+      <button id="btnHistory" class="textlink" type="button">历史记录</button>
+      <button id="btnAbout" class="textlink" type="button">关于</button>
+    </div>
+  </div>
+</header>
+
+<main class="max-w-5xl mx-auto px-6 py-8">
+
+  <!-- 输入卡片 -->
+  <section class="rl-card p-5 sm:p-8 trl" id="inputCard">
+
+    <!-- 品牌标语 -->
+    <div class="mb-8">
+      <h1 class="text-[26px] sm:text-[30px] font-semibold tracking-tight leading-tight" style="color:var(--ink-1);">看看你离这个 offer 有多远</h1>
+      <p class="text-[14px] mt-2" style="color:var(--ink-2);">粘贴 JD 与简历，或导入简历文件 —— 匹配打分 · 红旗检测 · 面试押题，纯前端计算，数据不出浏览器</p>
+    </div>
+
+    <!-- JD -->
+    <div class="flex items-center justify-between mb-2">
+      <h2 class="eyebrow"><span class="tabular font-semibold" style="color:var(--accent);">01</span> · 招聘 JD 描述</h2>
+      <button id="btnFill" class="textlink" type="button">填入示例</button>
+    </div>
+    <textarea id="jdInput" rows="6" placeholder="请粘贴职位描述…"></textarea>
+    <div class="mt-1 flex justify-between items-start">
+      <p id="jdError" class="text-[13px] hidden" style="color:var(--red);" aria-live="polite"></p>
+      <p id="jdCount" class="eyebrow ml-auto tabular">已输入 0 字</p>
+    </div>
+
+    <!-- 简历 -->
+    <div class="flex items-center justify-between mt-8 mb-2">
+      <h2 class="eyebrow"><span class="tabular font-semibold" style="color:var(--accent);">02</span> · 我的简历文本</h2>
+      <div class="flex items-center gap-1">
+        <button id="btnImport" class="textlink" type="button" title="支持 PDF / Word / Excel（.doc 请另存为 .docx）">导入文件</button>
+        <button id="btnClear" class="textlink" type="button">清空</button>
+      </div>
+    </div>
+    <input id="fileInput" type="file" accept=".pdf,.doc,.docx,.xls,.xlsx" class="hidden" aria-label="选择简历文件">
+    <textarea id="resumeInput" rows="8" placeholder="请粘贴简历全文，或点击「导入文件」/ 拖拽 PDF、Word、Excel 文件到此处…"></textarea>
+    <div class="mt-1 flex justify-between items-start">
+      <div class="flex flex-col gap-1">
+        <p id="resumeError" class="text-[13px] hidden" style="color:var(--red);" aria-live="polite"></p>
+        <p id="importMsg" class="text-[13px] hidden" style="color:var(--ink-2);" aria-live="polite"></p>
+      </div>
+      <p id="resumeCount" class="eyebrow ml-auto tabular">已输入 0 字</p>
+    </div>
+
+    <!-- 主按钮 -->
+    <div class="flex justify-center mt-8">
+      <button id="btnAnalyze"
+        class="disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2 px-8 py-3 rounded-full text-[15px] font-medium text-white trl"
+        style="background-color:var(--accent);background-image:linear-gradient(135deg,#0071E3,#0A84FF);height:44px;box-shadow:0 4px 14px rgba(0,113,227,0.35);"
+        onmouseover="this.style.filter='brightness(1.06)'" onmouseout="this.style.filter=''"
+        onmousedown="this.style.transform='scale(.98)'" onmouseup="this.style.transform='scale(1)'">
+        开始分析
+      </button>
+    </div>
+  </section>
+
+  <!-- 报告区占位（P3 起渲染内容） -->
+  <section id="reportArea" class="mt-8"></section>
+
+</main>
+
+<!-- 无障碍播报（复制结果等） -->
+<div id="liveToast" class="sr-only" role="status" aria-live="polite"></div>
+<!-- 可见 Toast：复制/打印等操作反馈 -->
+<div id="visToast" class="toast no-print" role="status" aria-hidden="true"></div>
+
+<!-- P7 历史记录抽屉 -->
+<div id="drawerMask" class="drawer-mask" aria-hidden="true"></div>
+<aside id="historyDrawer" class="drawer no-print" role="dialog" aria-modal="true" aria-label="历史记录" aria-hidden="true">
+  <div class="flex items-center justify-between px-6 pt-6 pb-4">
+    <h2 id="drawerTitle" tabindex="-1" class="text-[17px] font-semibold" style="color:var(--ink-1);">历史记录</h2>
+    <button id="btnCloseDrawer" class="textlink" type="button" aria-label="关闭历史记录">关闭</button>
+  </div>
+  <div id="historyList" class="flex-1 overflow-y-auto px-6 pb-4"></div>
+  <div class="px-6 py-4 border-t border-black/5">
+    <button id="btnClearHistory" class="textlink w-full justify-center" type="button">清空全部</button>
+  </div>
+</aside>
+
+<!-- P8 关于弹窗 -->
+<div id="aboutMask" class="drawer-mask" aria-hidden="true"></div>
+<div id="aboutModal" class="modal" role="dialog" aria-modal="true" aria-label="关于简历透镜" aria-hidden="true">
+  <p class="text-[17px] font-semibold" style="color:var(--ink-1);">关于简历透镜</p>
+  <p class="text-[14px] leading-relaxed mt-2" style="color:var(--ink-2);">
+    粘贴 JD 和简历，看匹配度、红旗与面试押题。支持 PDF / Word / Excel 简历导入。纯前端算法 · 数据不出浏览器 · 得分基于文本算法，仅供参考，不代表真实 ATS/HR 判断 · 简历透镜
+  </p>
+  <button id="btnCloseAbout" type="button" class="btn-secondary mt-6" aria-label="关闭关于弹窗">知道了</button>
+</div>
+
+<script>
+'use strict';
+
+/* ---------- 常量（§7 正式示例数据，校准用） ---------- */
+const JD_EXAMPLE = `岗位职责：
+1. 负责用户增长方向的产品规划与需求分析，输出产品方案并推动落地；
+2. 通过数据分析定位转化漏斗问题，设计 A/B 实验验证策略；
+3. 跨部门协作，协调研发、设计、运营资源，保证项目按时上线；
+4. 定期进行竞品分析和用户调研，持续迭代产品体验。
+
+任职要求：
+1. 3年以上互联网产品经验，有用户增长或电商产品经验优先；
+2. 熟练使用 SQL、Excel 进行数据分析，熟练使用 Axure、Figma 等原型工具；
+3. 具备良好的跨部门协作能力和项目管理能力，有 PMP 证书者优先；
+4. 本科及以上学历，具备优秀的逻辑思维和文档撰写能力；
+5. 结果导向，有成功的增长案例者优先。`;
+
+const RESUME_EXAMPLE = `张三 | 138xxxx0000 | zhangsan@qq.com | 上海
+
+教育背景
+2015-2019 华东理工大学 信息管理与信息系统 本科
+
+工作经历
+2019.07-2022.06 上海某某科技有限公司 产品专员
+- 负责电商后台产品的需求分析与功能设计，撰写 PRD 并跟进开发上线
+- 使用 Excel 进行销售数据统计分析，输出周报
+- 负责协调研发与设计资源，推进三个模块按期交付
+2022.07-至今 上海另一家网络科技有限公司 高级产品经理
+- 主导 App 改版项目，负责竞品分析和用户调研
+- 通过数据分析定位注册流程转化漏斗问题，优化后注册转化率提升 15%
+- 负责产品文档撰写，组织跨团队评审会议
+
+技能：Axure、Figma、SQL（基础）、PPT、项目管理
+自我评价：逻辑思维清晰，责任心强，善于沟通协作`;
+
+/* ==========================================================
+   MatchEngine 评分引擎（§6 评分算法设计 · 纯前端 · 挂在 window）
+   ========================================================== */
+const SKILL_DICT = {
+  技术: ('数据分析 SQL Excel Python Java JavaScript React Vue Spring MyBatis Go C++ C Linux Shell Git Docker Kubernetes MySQL PostgreSQL Oracle Redis MongoDB Hive Spark Flink Hadoop Kafka ETL 数据仓库 数据可视化 BI Tableau PowerBI Looker SPSS SAS R语言 Matlab TensorFlow Pytorch 机器学习 深度学习 推荐算法 NLP 大模型 算法 数据结构 架构设计 微服务 高并发 分布式 接口开发 前端开发 后端开发 爬虫 自动化测试 单元测试 性能优化 持续集成').split(' '),
+  产品: ('用户增长 需求分析 产品设计 产品规划 竞品分析 用户调研 用户研究 用户画像 用户留存 用户流失 用户分层 产品迭代 版本规划 功能设计 交互设计 原型设计 需求文档 埋点 增长实验 转化漏斗 转化率 留存率 复购率 ARPU DAU MAU GMV 商业化 商业模式 MVP 可用性测试 A/B测试 A/B实验 PRD Axure Figma 电商 项目排期 敏捷开发 Scrum 里程碑 排期管理 优先级 用户场景 痛点分析 体验优化 产品验收 数据驱动 增长策略 策略分析 产品运营 业务洞察 行业研究 商业分析 用户运营策略 增长模型 增长指标 用户激活 用户转化 产品包装 竞品对比').split(' '),
+  运营: ('内容运营 私域 增长黑客 用户运营 活动策划 社群运营 新媒体 公众号 小红书 抖音运营 直播运营 SEO SEM 信息流 投放 落地页 裂变 分销 积分体系 会员运营 品牌运营 渠道运营 线上活动 选题 文案写作 运营策略 KOL IP运营 Push策略 短信营销 复购运营 促活 召回 拉新 爆款 社交裂变 内容矩阵 增长实验 数据运营 营收分析').split(' '),
+  通用: ('跨部门协作 逻辑思维 文档撰写 演讲 复盘 PPT 团队管理 KPI OKR 文案 沟通能力 责任心 项目管理 协作 自驱 执行力 抗压 汇报 时间管理 书面表达 会议组织 数据敏感 主人翁意识 结构化思考 优先级判断 冲突处理 谈判技巧 主动学习 细节把控 结果导向').split(' ')
+};
+const STOP_WORDS = new Set(('的 了 和 与 或 我们 你 您 有 能 会 是 在 进行 相关 负责 具备 优先 以上 以下 经验者 能力 工作 岗位 职责 要求 任职 熟练 良好 优秀').split(' '));
+const HARD_LIST = ['本科','硕士','博士','英语四级','英语六级','CET','PMP','CPA','法律职业资格','教师资格证','应届','党员'];
+const STRUCTURE_ZONES = ['个人信息','教育','工作','实习','项目','技能','自我评价','证书','作品'];
+/* 别名规范化：JD 写"A/B 实验"，词典词条为"A/B测试"，统一为词典词条展示（§6.2 别名兜底） */
+const CANON = { 'ab实验': 'A/B测试', 'ab测试': 'A/B测试' };
+const GROUP_WEIGHT = { 技术:3, 产品:2, 运营:1, 证书:3 };
+const QUANT_VERBS = ['提升','增长','降低','减少','节省','完成','达成'];
+
+/* ---- 基础工具 ---- */
+function removeNoise(s){ return String(s).toLowerCase().replace(/[^\p{L}\p{N}]/gu,''); }
+function bigrams(s){ const r=[]; for(let i=0;i<s.length-1;i++) r.push(s.slice(i,i+2)); return r; }
+function dice(a,b){ const x=removeNoise(a), y=removeNoise(b); if(!x||!y) return 0; if(x===y) return 1; const A=bigrams(x), B=bigrams(y); const sa=new Set(A); let inter=0; for(const g of B) if(sa.has(g)) inter++; return (2*inter)/(A.length+B.length); }
+function splitSentences(text){ return String(text).split(/[；;。！？!?\n]+/).map(t=>t.trim()).filter(Boolean); }
+
+/* ---- 维度1：候选关键词提取（分母 = 非通用词典命中 + 英文/数字 token） ---- */
+function extractCandidates(jdText){
+  const seen = new Map(); // 去重键(规范化) -> {word, group, weight}
+  const add = (word, group) => { const k = removeNoise(word); if(!seen.has(k)) seen.set(k, { word, group, weight: GROUP_WEIGHT[group] || 2 }); };
+  for(const s of splitSentences(jdText)){
+    const norm = removeNoise(s);
+    for(const grp of ['技术','产品','运营']){
+      for(const w of SKILL_DICT[grp]){
+        const nw = removeNoise(w);
+        // 2 字以上（规范化后）词典词才做子串匹配，避免 'C'/'C++'→'c' 单字符误命中
+        if(nw.length >= 2 && norm.includes(nw)) add(CANON[nw] || w, grp);
+      }
+    }
+    // 英文/数字 token
+    for(const t of s.match(/[A-Za-z][A-Za-z0-9/.\-]*/g) || []){
+      const nt = removeNoise(t);
+      if(!nt) continue;
+      // 别名短语头（如 A/B → "ab实验"）由词典命中承接，避免重复
+      if([...Object.keys(CANON)].some(k => k.startsWith(nt) && k.length > nt.length)) continue;
+      const grp = HARD_LIST.some(h => removeNoise(h) === nt) ? '证书' : '技术';
+      add(t, grp);
+    }
+  }
+  return [...seen.values()];
+}
+
+/* ---- 简历侧 token 化：英文/数字 token + 2~8 字中文滑动窗口 ---- */
+function buildResumeTokens(text){
+  const set = new Set();
+  for(const m of String(text).match(/[A-Za-z][A-Za-z0-9/.\-]*/g) || []) set.add(removeNoise(m));
+  for(const m of String(text).match(/\d+(?:\.\d+)?(?:%|万|亿)?/g) || []) set.add(m);
+  for(const m of String(text).match(/[\u4e00-\u9fff]+/g) || []){
+    const maxLen = Math.min(8, m.length);
+    for(let len=2; len<=maxLen; len++) for(let i=0; i+len<=m.length; i++) set.add(m.slice(i, i+len));
+  }
+  return set;
+}
+function isMatched(word, resumeTokens){
+  const cw = removeNoise(word);
+  if(resumeTokens.has(cw)) return true;
+  for(const rt of resumeTokens){ if(dice(word, rt) >= 0.6) return true; }
+  return false;
+}
+
+/* ---- 通用：提取工作/实习经历段正文（避免教育年限掺入） ---- */
+function workBody(resume){
+  const hIdx = Math.min(...['工作经历','工作经验','实习经历'].map(h => { const i = resume.indexOf(h); return i < 0 ? Infinity : i; }));
+  if(hIdx === Infinity) return resume;
+  let cut = resume.slice(hIdx);
+  const endI = Math.min(...['技能','自我评价','证书','教育背景'].map(h => { const i = cut.indexOf(h); return i < 0 ? Infinity : i; }));
+  if(endI !== Infinity) cut = cut.slice(0, endI);
+  return cut;
+}
+
+/* ---- 维度2：经验年限 ---- */
+function computeYears(jd, resume){
+  const reqM = jd.match(/(\d+)\s*年(?:以上|及以上)?[^。；;！!\n]{0,12}?经验/);
+  const req = reqM ? Number(reqM[1]) : null;
+  const body = workBody(resume);
+  const nowY = new Date().getFullYear(); // 动态取当年，不硬编码
+  const segRe = /(20\d{2})\s*[.\-/年]\s*(\d{1,2})?\s*[-–~至到]\s*(20\d{2}|至今|今|现在)/g;
+  let act = 0, m, segs = [];
+  while((m = segRe.exec(body))){
+    const start = Number(m[1]);
+    const end = (m[3]==='至今'||m[3]==='今'||m[3]==='现在') ? nowY : Number(m[3]);
+    act += end - start;
+    segs.push(m[1] + '→' + m[3]);
+  }
+  if(act <= 0){ const fall = resume.match(/(\d+)\s*年(?:工作|相关)?经验/); if(fall) act = Number(fall[1]); }
+  act = Math.round(act * 10) / 10;
+  const score = req == null ? 80 : (act >= req ? 100 : Math.round(act / req * 1000) / 10);
+  return { req, act, score, note: req == null ? `JD 未明确年限要求（中性 80 分）` : `JD 要求 ${req} 年，简历约 ${act} 年（${segs.join('；')}）` };
+}
+
+/* ---- 维度3：量化成果 ---- */
+function computeQuantified(resume){
+  const hitTypes = [];
+  const hitSents = new Set();
+  for(const s of splitSentences(resume)){
+    let t = 0;
+    if(/\d+(?:\.\d+)?%/.test(s)){ hitTypes.push('percent'); t = 1; }
+    if(/\d+(?:\.\d+)?(?:万|亿|千|k|K|w|W)/.test(s)){ hitTypes.push('amount'); t = 1; }
+    if(new RegExp('(?:' + QUANT_VERBS.join('|') + ')[^。；;！!\\n]{0,6}?\\d').test(s)){ hitTypes.push('verb'); t = 1; }
+    if(t) hitSents.add(s);
+  }
+  const cats = [...new Set(hitTypes)];
+  return { score: Math.min(100, cats.length * 20), sentences: [...hitSents], types: cats, note: `命中 ${cats.length}/3 类量化信号` };
+}
+
+/* ---- 维度4：硬性条件 ---- */
+function computeHard(jd, resume){
+  const hit = [], miss = [];
+  const jdN = String(jd).toLowerCase(), rsN = String(resume).toLowerCase();
+  for(const h of HARD_LIST){
+    const hi = h.toLowerCase();
+    if(!jdN.includes(hi)) continue;
+    (rsN.includes(hi) ? hit : miss).push(h);
+  }
+  const score = (hit.length + miss.length) === 0 ? 80 : Math.round(hit.length / (hit.length + miss.length) * 1000) / 10;
+  return { hit, miss, score, note: (hit.length + miss.length) === 0 ? 'JD 未提及硬性条件（中性 80 分）' : `命中 ${hit.length} 项，缺失 ${miss.length} 项（${[...hit, ...miss].join(' / ') || '无'}）` };
+}
+
+/* ---- 维度5：简历结构 ---- */
+function computeStructure(resume){
+  const head = String(resume).split('\n').slice(0, 2).join('\n');
+  const fallback = /姓名|地址|@|-?\d{3,}/.test(head); // 个人信息兜底（§6.6 校准杠杆）
+  const found = [];
+  if(fallback) found.push('个人信息');
+  const terms = { 教育:'教育', 工作:'工作', 实习:'实习', 项目:'项目', 技能:'技能', 自我评价:'自我评价', 证书:'证书', 作品:'作品' };
+  for(const k of ['教育','工作','实习','项目','技能','自我评价','证书','作品']){
+    if(String(resume).includes(terms[k])) found.push(k);
+  }
+  const n = found.length;
+  const score = n >= 6 ? 100 : (n === 5 ? 80 : (n === 4 ? 60 : Math.round(n / 4 * 60)));
+  return { found, score, personalFallback: fallback, note: `识别 ${n} 个分区${fallback ? '（含个人信息兜底识别）' : ''}` };
+}
+
+/* ==========================================================
+   P5 红旗检测（差异化 A：F1-F6，不进总分）
+   ========================================================== */
+function parseWorkPeriods(resume){
+  const nowY = new Date().getFullYear(), nowM = new Date().getMonth() + 1;
+  const re = /(20\d{2})\s*[.\-/年]\s*(\d{1,2})?\s*[-–~至到]\s*(20\d{2}|至今|今|现在)(?:[.\-/年]?\s*(\d{1,2}))?/g;
+  const out = [];
+  let m;
+  while((m = re.exec(workBody(resume)))){
+    if(/至今|今|现在/.test(m[3])){ out.push({ sy:+m[1], sm:+m[2]||1, ey:nowY, em:nowM, self:'至今' }); }
+    else{ out.push({ sy:+m[1], sm:+m[2]||1, ey:+m[3], em: +(m[4]||1), self:m[3] }); }
+  }
+  out.sort((a, b) => (a.sy - b.sy) || (a.sm - b.sm));
+  return out;
+}
+const RedFlagDetector = {
+  detect(resumeText, ar){
+    const flags = [];
+    // F1 模糊表达（red）：负责类动词 ≥4 且量化句 <2
+    const verbCount = (resumeText.match(/负责|参与|协助|配合|推动/g) || []).length;
+    if(verbCount >= 4 && ar.quantified.length < 2){
+      flags.push({ id:'F1', level:'red', title:'模糊表达过多',
+        detail:`写了 ${verbCount} 个"负责"，却没有几个数字——HR 会认为你做过，但不知道你做得多好。`,
+        advice:'把最重的 2-3 条"负责…"改写成"动作+数字结果"。' });
+    }
+    // F2 自我评价套话（yellow）：命中 ≥2 个套话词
+    const cliches = ['吃苦耐劳','责任心强','沟通能力强','团队精神','学习能力强','抗压能力强'].filter(w => resumeText.includes(w));
+    if(cliches.length >= 2){
+      flags.push({ id:'F2', level:'yellow', title:'自我评价套话',
+        detail:'自我评价全是套话，信息量为零。',
+        advice:'换成一句事实+数字，例如"两年内主导 3 个从 0 到 1 项目"。' });
+    }
+    // F3 经历时间断档（yellow）：相邻经历段间隔 >6 个月
+    const per = parseWorkPeriods(resumeText);
+    for(let i = 1; i < per.length; i++){
+      const gap = (per[i].sy - per[i-1].ey) * 12 + (per[i].sm - per[i-1].em);
+      if(gap > 6){
+        flags.push({ id:'F3', level:'yellow', title:'经历时间断档',
+          detail:`经历之间有 ${gap} 个月空档，面试大概率被问。`,
+          advice:'准备 30 秒坦然说法，落点放在回归后的状态。' });
+        break;
+      }
+    }
+    // F4 数字缺失（red）：量化信号 <2
+    if(ar.quantified.length < 2){
+      flags.push({ id:'F4', level:'red', title:'量化成果缺失',
+        detail:'整份简历几乎没有量化成果。',
+        advice:'每条经历末尾补一个数字，哪怕是估算口径。' });
+    }
+    // F5 黑话密度（yellow）：互联网黑话 ≥3 个
+    const buzz = ['赋能','抓手','闭环','颗粒度','对齐','打法','沉淀','拉通'].filter(w => resumeText.includes(w));
+    if(buzz.length >= 3){
+      flags.push({ id:'F5', level:'yellow', title:'黑话密度偏高',
+        detail:'互联网黑话密度偏高，HR 阅读负担大。',
+        advice:'保留 1-2 个即可，其余换成大白话。' });
+    }
+    // F6 内容过薄（yellow）：去空白后 <300 字
+    if(resumeText.replace(/\s+/g, '').length < 300){
+      flags.push({ id:'F6', level:'yellow', title:'内容过薄',
+        detail:'内容太单薄，撑不起一轮面试。',
+        advice:'补充项目细节与关键动作，至少写到 300 字。' });
+    }
+    return flags;
+  }
+};
+
+/* ==========================================================
+   P6 面试押题（§3.2：6 来源按优先级取前 3，F1/F3 与红旗联动）
+   ========================================================== */
+function extractVagueSentence(rs){
+  for(const s of splitSentences(rs)){
+    if(/负责|参与|协助|配合/.test(s) && !/\d/.test(s) && s.length > 4){
+      return s.length > 30 ? s.slice(0, 30) + '…' : s;
+    }
+  }
+  return '负责某项工作';
+}
+function maxWorkGap(rs){
+  const per = parseWorkPeriods(rs);
+  let mx = 0;
+  for(let i = 1; i < per.length; i++){
+    const gap = (per[i].sy - per[i-1].ey) * 12 + (per[i].sm - per[i-1].em);
+    if(gap > mx) mx = gap;
+  }
+  return mx;
+}
+const InterviewPredictor = {
+  predict(r, rs){
+    const qs = [];
+    const push = (src, q, why, prep) => { if(qs.length < 3) qs.push({ src, q, why, prep }); };
+    const gOrder = { 技术:0, 产品:1, 运营:2, 证书:3 };
+    // 1 硬性条件缺失
+    for(const h of r.hardReq.miss){
+      push('hard', `JD 要求${h}，但你的简历里没有体现，如果被问到你怎么回应？`,
+        `JD 把它列为硬性要求，缺失时面试官几乎必然会核实。`,
+        `若确实具备，在简历教育背景或证书栏补上；若不打算补，提前准备转向相邻经验的回应。`);
+    }
+    // 2 年限差距（act<req）
+    if(r.years.req != null && r.years.act < r.years.req){
+      push('years', `JD 要求 ${r.years.req} 年经验，你目前约 ${r.years.act} 年，怎么弥补这个差距？`,
+        `面试官会按年限做第一轮筛选，差距会被直接追问。`,
+        `用成果密度回答，而不是年限长度——突出独立成事的能力。`);
+    }
+    // 3 高权重缺失关键词（剔除硬性已覆盖词，技术>产品>运营取前 2）
+    const hardNorm = new Set(r.hardReq.miss.map(h => removeNoise(h)));
+    const missKw = r.missingKeywords.filter(k => !hardNorm.has(removeNoise(k.word)))
+      .sort((a, b) => (gOrder[a.group] ?? 9) - (gOrder[b.group] ?? 9));
+    for(const k of missKw.slice(0, 2)){
+      push('kw', `JD 很看重${k.word}，但简历里没提到——能聊聊相关经历吗？`,
+        `JD 里明确出现「${k.word}」，大概率是被重点考察的能力。`,
+        `有真实经历就补充进简历；没有就准备一段"可迁移技能"的诚实回答。`);
+    }
+    // 4 模糊表述追问（联动红旗 F1）
+    if(r.redFlags.some(f => f.id === 'F1')){
+      const s = extractVagueSentence(rs);
+      push('f1', `你简历里写了"${s}"，但没有数字——具体提升了多少？`,
+        `HR 看到"负责"却看不到数字，会怀疑这条经历的分量。`,
+        `提前准备 2-3 个可说的数字，哪怕是估算口径。`);
+    }
+    // 5 核心技能深挖（命中的最高权重词）
+    if(r.matchedKeywords.length){
+      const top = r.matchedKeywords.slice().sort((a, b) => (b.weight || 0) - (a.weight || 0))[0];
+      push('deep', `你提到了${top.word}，请用 STAR 讲一个最有代表性的案例。`,
+        `你在简历里写了${top.word}，面试官想确认你是真用过还是只是提到。`,
+        `准备一个完整 STAR 案例，包含数字结果。`);
+    }
+    // 6 时间断档（联动红旗 F3）
+    const gap = maxWorkGap(rs);
+    if(gap > 6){
+      push('f3', `两段经历之间有 ${gap} 个月空档，能解释一下吗？`,
+        `经历断档是面试必问题，空档期做什么会被放大追问。`,
+        `准备 30 秒的坦然说法，落点放在"回归后的状态"。`);
+    }
+    // 兜底：至少 1 条自我介绍
+    if(qs.length === 0){
+      push('fallback', `请用 1 分钟介绍自己，并突出你与这个岗位的匹配点。`,
+        `自我介绍几乎总是面试的第一问，开场即定调。`,
+        `准备一句话版本与一分钟版本，突出与 JD 匹配的经历。`);
+    }
+    return qs.slice(0, 3);
+  }
+};
+
+/* ---- 主入口 ---- */
+function analyze(jdText, resumeText){
+  const jd = String(jdText || ''), rs = String(resumeText || '');
+  const candidates = extractCandidates(jd);
+  const resumeTokens = buildResumeTokens(rs);
+  const matched = [], missing = [];
+  for(const c of candidates){
+    (isMatched(c.word, resumeTokens) ? matched : missing).push({ word: c.word, group: c.group, weight: c.weight });
+  }
+  const kwScore = candidates.length ? Math.round(matched.length / candidates.length * 1000) / 10 : 0;
+  const years = computeYears(jd, rs);
+  const quant = computeQuantified(rs);
+  const hard = computeHard(jd, rs);
+  const struct = computeStructure(rs);
+  const total = Math.round((kwScore*0.40 + years.score*0.15 + quant.score*0.15 + hard.score*0.15 + struct.score*0.15) * 10) / 10;
+  const grade = total >= 85 ? 'A' : (total >= 70 ? 'B' : (total >= 50 ? 'C' : 'D'));
+  const result = {
+    total, grade,
+    dimensions: [
+      { key:'keywords', name:'关键词覆盖', score:kwScore, note:`命中 ${matched.length}/${candidates.length} 个关键词（${candidates.length} 个词进入分母）` },
+      { key:'years', name:'经验年限', score:years.score, note:years.note },
+      { key:'quantified', name:'量化成果', score:quant.score, note:quant.note },
+      { key:'hard', name:'硬性条件', score:hard.score, note:hard.note },
+      { key:'structure', name:'简历结构', score:struct.score, note:struct.note }
+    ],
+    matchedKeywords: matched, missingKeywords: missing,
+    quantified: quant.sentences,
+    hardReq: { hit: hard.hit, miss: hard.miss },
+    years: { req: years.req, act: years.act },
+    structure: { found: struct.found, personalFallback: struct.personalFallback }
+  };
+  result.redFlags = RedFlagDetector.detect(rs, { quantified: quant.sentences });
+  result.interview = InterviewPredictor.predict(result, rs);
+  return result;
+}
+window.MatchEngine = { analyze };
+window.InterviewPredictor = InterviewPredictor;
+
+/* ---------- DOM ---------- */
+const $ = (id) => document.getElementById(id);
+const jdInput  = $('jdInput');
+const resumeInput = $('resumeInput');
+const jdCount  = $('jdCount');
+const resumeCount = $('resumeCount');
+const jdError  = $('jdError');
+const resumeError = $('resumeError');
+const btnAnalyze = $('btnAnalyze');
+
+/* ---------- 字数统计 ---------- */
+function countChars(el){ return el.value.replace(/\s/g,'').length; }
+jdInput.addEventListener('input', () => { jdCount.textContent = '已输入 ' + countChars(jdInput) + ' 字'; });
+resumeInput.addEventListener('input', () => { resumeCount.textContent = '已输入 ' + countChars(resumeInput) + ' 字'; });
+
+/* ---------- 填入示例 / 清空 ---------- */
+$('btnFill').addEventListener('click', () => {
+  jdInput.value = JD_EXAMPLE;
+  resumeInput.value = RESUME_EXAMPLE;
+  jdInput.dispatchEvent(new Event('input'));
+  resumeInput.dispatchEvent(new Event('input'));
+  clearErrors();
+});
+$('btnClear').addEventListener('click', () => {
+  resumeInput.value = '';
+  resumeInput.dispatchEvent(new Event('input'));
+  importMsg.classList.add('hidden');
+  clearErrors();
+});
+
+/* ==========================================================
+   P9 文件导入（§2.2·Prompt 9）：点击上传 + 拖拽，纯浏览器解析回填
+   三个解析库 CDN 均 defer 加载，调用处判空降级，失败不影响其余功能
+   ========================================================== */
+const btnImport = $('btnImport');
+const fileInput = $('fileInput');
+const importMsg = $('importMsg');
+function libsReady(){ return !!(window.pdfjsLib && window.mammoth && window.XLSX); }
+
+/* 解析库未就绪（离线版 / CDN 失败）：按钮灰显 + title 提示，拖拽兜底拦截 */
+function disableImport(reason){
+  btnImport.disabled = true;
+  btnImport.title = reason;
+}
+window.addEventListener('load', () => {
+  if (!libsReady()) disableImport('导入功能仅在线版可用（离线版 / 解析库加载失败时不支持）');
+});
+
+function showImportMsg(msg, isError){
+  importMsg.textContent = msg;
+  importMsg.style.color = isError ? 'var(--red)' : 'var(--ink-2)';
+  importMsg.classList.remove('hidden');
+}
+
+/* 解析失败统一文案（扫描版 PDF 等），不清空已有内容 */
+const IMPORT_FAIL_MSG = '解析失败或内容为空（扫描版 PDF 暂不支持，请粘贴文字）';
+const DOC_CONVERT_MSG = '解析失败或内容为空（.doc 请另存为 .docx 后重试）';
+
+function withTimeout(promise, ms){
+  return Promise.race([promise, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
+}
+
+async function parseFile(file){
+  const name = file.name.toLowerCase();
+  if (name.endsWith('.doc')) return { err: 'doc' };
+  if (name.endsWith('.pdf')) return parsePDF(file);
+  if (name.endsWith('.docx')) return parseDocx(file);
+  if (name.endsWith('.xls') || name.endsWith('.xlsx')) return parseXlsx(file);
+  return { err: 'type' };
+}
+
+/* PDF：pdf.js 逐页提取文字层，<50 字判定扫描版 → 失败
+   必须设置 workerSrc（否则 getDocument 直接抛错）；
+   CMap 让中文 CID 字体 PDF 也能正确解码 */
+function parsePDF(file){
+  return withTimeout((async () => {
+    const CDN = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/';
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc = CDN + 'build/pdf.worker.min.js';
+    const data = await file.arrayBuffer();
+    const pdf = await window.pdfjsLib.getDocument({
+      data,
+      cMapUrl: CDN + 'cmaps/',
+      cMapPacked: true,
+      useSystemFonts: true
+    }).promise;
+    let text = '';
+    for (let i = 1; i <= pdf.numPages; i++){
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      text += content.items.map(it => it.str).join('') + '\n';
+    }
+    return { text: text.trim(), min: 50 };
+  })(), 25000);
+}
+
+/* Word：mammoth.extractRawText 取纯文本 */
+function parseDocx(file){
+  return withTimeout((async () => {
+    const arrayBuffer = await file.arrayBuffer();
+    const result = await window.mammoth.extractRawText({ arrayBuffer });
+    return { text: result.value.trim(), min: 10 };
+  })(), 20000);
+}
+
+/* Excel：SheetJS 读第一个工作表，按行拼接，跳过空行 */
+function parseXlsx(file){
+  return withTimeout((async () => {
+    const data = await file.arrayBuffer();
+    const wb = window.XLSX.read(data, { type: 'array' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = window.XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+    const lines = rows.map(r => r.filter(c => String(c).trim() !== '').join(' ')).filter(l => l.trim() !== '');
+    return { text: lines.join('\n').trim(), min: 10 };
+  })(), 20000);
+}
+
+/* 统一入口：btnImport / 拖拽都走这里 */
+async function handleFile(file){
+  if (!(file instanceof File)) return;
+  clearErrors();
+  if (!libsReady()){ showImportMsg('导入功能仅在线版可用（解析库加载失败）', true); return; }
+  const fname = file.name;
+  showImportMsg('正在解析 ' + fname + '…', false);
+  try {
+    const r = await parseFile(file);
+    let text, min = 50;
+    if (r && r.err === 'doc'){ showImportMsg(DOC_CONVERT_MSG, true); return; }
+    if (r && r.text !== undefined){ text = r.text; min = r.min || 50; }
+    const len = countCharsString(text || '');
+    if (!text || len < min){ showImportMsg(IMPORT_FAIL_MSG, true); return; }
+    resumeInput.value = text;
+    resumeInput.dispatchEvent(new Event('input'));
+    showImportMsg('已从 ' + fname + ' 导入 ' + len + ' 字，请检查解析结果后再点分析', false);
+  } catch (e) {
+    showImportMsg(IMPORT_FAIL_MSG, true);
+  }
+}
+function countCharsString(s){ return String(s).replace(/\s/g, '').length; }
+
+btnImport.addEventListener('click', () => { fileInput.click(); });
+fileInput.addEventListener('change', () => {
+  if (fileInput.files && fileInput.files[0]) handleFile(fileInput.files[0]);
+  fileInput.value = '';
+});
+
+/* 拖拽导入：拖入高亮 accent 虚线边框，松手解析 */
+resumeInput.addEventListener('dragenter', (e) => { e.preventDefault(); resumeInput.classList.add('drag-hover'); });
+resumeInput.addEventListener('dragover', (e) => { e.preventDefault(); resumeInput.classList.add('drag-hover'); });
+resumeInput.addEventListener('dragleave', () => { resumeInput.classList.remove('drag-hover'); });
+resumeInput.addEventListener('drop', (e) => {
+  e.preventDefault();
+  resumeInput.classList.remove('drag-hover');
+  if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+});
+
+/* ---------- 校验 ---------- */
+function showError(el, errEl, msg){
+  errEl.textContent = msg;
+  errEl.classList.remove('hidden');
+  el.style.borderColor = 'var(--red)';
+  el.classList.remove('shake');
+  void el.offsetWidth; // 重启动画
+  el.classList.add('shake');
+}
+function clearErrors(){
+  jdError.classList.add('hidden');
+  resumeError.classList.add('hidden');
+  jdInput.style.removeProperty('border-color');
+  resumeInput.style.removeProperty('border-color');
+  jdInput.classList.remove('shake');
+  resumeInput.classList.remove('shake');
+}
+
+/* ==========================================================
+   P3 报告区渲染（骨架屏 → 四步文案 → 报告 + 分数环动画）
+   ========================================================== */
+const reportArea = $('reportArea');
+const ANALYZE_STEPS = ['拆解 JD', '扫描简历', '计算匹配', '生成建议'];
+const GRADE_NAME = { A:'高度匹配', B:'基本匹配', C:'部分匹配', D:'匹配度低' };
+const GRADE_HEAD = {
+  A:'这份简历可以直接投了',
+  B:'底子不错，再补几块短板',
+  C:'差距较明显，先按建议改',
+  D:'匹配度偏低，建议换赛道叙事'
+};
+const GRADE_PILL = {
+  A:'background:rgba(48,209,88,0.14);color:#248A3D;',
+  B:'background:rgba(0,113,227,0.10);color:#0066CC;',
+  C:'background:rgba(255,149,0,0.14);color:#C93400;',
+  D:'background:rgba(255,59,48,0.10);color:#D70015;'
+};
+const GRADE_LINE = {
+  A:'关键词全覆盖，重点打磨量化成果就能投递',
+  B:'补齐缺失关键词，匹配度可再上一个台阶',
+  C:'差距较明显，建议按改写建议逐条优化',
+  D:'匹配度低，考虑调整方向或重构简历叙事'
+};
+
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function groupTag(g){ return {技术:'技术',产品:'产品',运营:'运营',证书:'证书'}[g] || g; }
+
+/* ---- P8 初始空态：占位卡片 + 线稿插画 ---- */
+function placeholderHTML(){
+  return `
+  <section class="rl-card p-10 trl flex flex-col items-center text-center">
+    <svg width="132" height="132" viewBox="0 0 132 132" fill="none" aria-hidden="true">
+      <defs>
+        <linearGradient id="phGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#0071E3"/><stop offset="100%" stop-color="#5E5CE6"/>
+        </linearGradient>
+      </defs>
+      <circle cx="58" cy="58" r="34" stroke="url(#phGrad)" stroke-width="2.5" opacity="0.85"/>
+      <path d="M82 82 L106 106" stroke="url(#phGrad)" stroke-width="2.5" stroke-linecap="round" opacity="0.85"/>
+      <rect x="44" y="38" width="28" height="40" rx="4" stroke="#AEAEB2" stroke-width="1.5"/>
+      <line x1="51" y1="48" x2="65" y2="48" stroke="#AEAEB2" stroke-width="1.5"/>
+      <line x1="51" y1="56" x2="65" y2="56" stroke="#AEAEB2" stroke-width="1.5"/>
+      <line x1="51" y1="64" x2="59" y2="64" stroke="#AEAEB2" stroke-width="1.5"/>
+      <circle cx="104" cy="30" r="3" fill="#0071E3" opacity="0.35"/>
+      <circle cx="24" cy="96" r="2.5" fill="#5E5CE6" opacity="0.35"/>
+    </svg>
+    <p class="text-[20px] font-semibold mt-6 tracking-tight" style="color:var(--ink-1);">把 JD 和简历贴进来，看看你离这个 offer 有多远</p>
+    <p class="text-[14px] mt-2" style="color:var(--ink-2);">纯前端算法 · 数据不出浏览器 · 得分仅供参考</p>
+    <div class="flex flex-wrap justify-center gap-2 mt-5">
+      <span class="text-[12px] px-3 py-1.5 rounded-full" style="background:rgba(0,113,227,0.08);color:#0066CC;">匹配打分</span>
+      <span class="text-[12px] px-3 py-1.5 rounded-full" style="background:rgba(255,59,48,0.08);color:#D70015;">红旗检测</span>
+      <span class="text-[12px] px-3 py-1.5 rounded-full" style="background:rgba(255,149,0,0.10);color:#C93400;">面试押题</span>
+      <span class="text-[12px] px-3 py-1.5 rounded-full" style="background:rgba(94,92,230,0.08);color:#3634A3;">成长回路</span>
+    </div>
+  </section>`;
+}
+
+function skeletonHTML(){
+  return `
+  <section class="rl-card p-8 trl">
+    <div class="flex flex-col sm:flex-row items-center gap-8">
+      <div class="flex flex-col items-center">
+        <div class="sk sk-ring"></div>
+        <p class="sk-tip" id="skTip">拆解 JD…</p>
+      </div>
+      <div class="flex-1 w-full space-y-3">
+        <div class="sk sk-bar" style="width:72%"></div>
+        <div class="sk sk-bar" style="width:46%"></div>
+      </div>
+    </div>
+    <div class="mt-8 space-y-3">
+      <div class="sk sk-bar" style="width:86%"></div>
+      <div class="sk sk-bar" style="width:72%"></div>
+      <div class="sk sk-bar" style="width:58%"></div>
+      <div class="sk sk-bar" style="width:64%"></div>
+      <div class="sk sk-bar" style="width:46%"></div>
+    </div>
+    <div class="mt-6 flex gap-4">
+      <div class="sk sk-card flex-1"></div>
+      <div class="sk sk-card flex-1"></div>
+    </div>
+  </section>`;
+}
+
+/* ---- P7 成长回路（§3.3）：首次基线 → 本次对比 ---- */
+function growthHTML(r, base){
+  if(!base) return '';
+  const diff = Math.round((r.total - base.total) * 10) / 10;
+  const cls = diff > 0 ? 'grow-up' : (diff < 0 ? 'grow-down' : 'grow-flat');
+  const sign = diff > 0 ? '↑' + diff : (diff < 0 ? '↓' + Math.abs(diff) : '→ 0');
+  const dimArrows = r.dimensions.map(d => {
+    const b = (base.dims || []).find(x => x.key === d.key);
+    if(b === undefined) return null;
+    const dv = d.score - b.score;
+    const arrow = dv > 0 ? '↑' : (dv < 0 ? '↓' : '→');
+    return `<span class="tabular" title="${d.name}">${d.name} ${arrow}${dv > 0 ? '+' + dv : dv}</span>`;
+  }).filter(Boolean).join('<span style="color:#D2D2D7;"> · </span>');
+  return `
+  <section class="rl-card p-5 trl" id="growthBar">
+    <div class="flex flex-wrap items-center gap-3">
+      <span class="tabular px-3 py-1 rounded-full text-[13px] font-semibold ${cls}">
+        首次 ${base.total} 分 → 本次 ${r.total} 分（${sign}）
+      </span>
+      <button id="growthReset" type="button" class="textlink" aria-label="重置基线">重置基线</button>
+      ${diff < 0 ? `<span class="text-[13px]" style="color:var(--ink-2);">可能是删掉了某些量化表述，对照维度图看看哪里掉了。</span>` : ''}
+    </div>
+    ${dimArrows ? `<div class="flex flex-wrap gap-x-3 gap-y-1 mt-3 text-[13px]" style="color:var(--ink-3);">${dimArrows}</div>` : ''}
+  </section>`;
+}
+
+function reportHTML(r, base){
+  const dims = r.dimensions;
+  const hitChips = r.matchedKeywords.map((k, i) =>
+    `<span class="chip chip-hit chip-in" style="--i:${i}"><span class="gtag">${groupTag(k.group)}</span>${esc(k.word)}</span>`).join('')
+    || '<span class="text-[13px]" style="color:var(--ink-3);">暂无命中关键词</span>';
+  const missChips = r.missingKeywords.map((k, i) =>
+    `<button type="button" class="chip chip-miss clickable chip-in" style="--i:${i}" data-miss="${esc(k.word)}" title="点击查看改写建议">` +
+    `<span class="gtag">${groupTag(k.group)}</span>${esc(k.word)}</button>`).join('');
+  const missBlock = r.missingKeywords.length
+    ? `<div class="flex flex-wrap gap-2">${missChips}</div>`
+    : `<p class="text-[15px]" style="color:var(--ink-2);">关键词全覆盖，建议检查量化成果</p>`;
+  const denom = r.matchedKeywords.length + r.missingKeywords.length;
+  const sugs = buildSuggestions(r);
+  const sugCards = sugs.map((s, i) => suggestionCardHTML(s, i)).join('');
+  const flags = r.redFlags || [];
+  const flagCards = flags.map((f, fi) =>
+    `<div class="flag-card ${f.level === 'red' ? 'flag-red' : 'flag-yellow'} rise-in" style="--i:${fi}">
+      <div class="flex items-start justify-between gap-3">
+        <h3 class="text-[16px] font-semibold" style="color:var(--ink-1);">${esc(f.title)}</h3>
+        <span class="text-[11px] font-semibold px-2 py-[3px] rounded-full shrink-0" ` +
+        `style="${f.level === 'red' ? 'background:rgba(255,59,48,0.10);color:#D70015;' : 'background:rgba(255,149,0,0.12);color:#C93400;'}">${esc(f.id)}</span>
+      </div>
+      <p class="text-[14px] mt-2 leading-relaxed" style="color:var(--ink-2);">${esc(f.detail)}</p>
+      <p class="text-[13px] mt-1.5 leading-relaxed" style="color:var(--ink-3);">建议：${esc(f.advice)}</p>
+    </div>`).join('');
+  const iv = r.interview || [];
+  const ivCards = iv.map((q, i) => {
+    const copy = 'Q' + (i+1) + ' ' + q.q + '\n为什么会问：' + q.why + '\n准备要点：' + q.prep;
+    return `
+    <article class="relative bg-white rounded-[12px] pl-6 pr-4 pt-6 pb-5 rise-in" style="box-shadow:inset 0 0 0 1px rgba(0,0,0,0.06);background:linear-gradient(180deg,#FBFBFD,#FFFFFF);--i:${i}">
+      <span class="tabular absolute top-5 left-5 w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-[12px] sm:text-[13px] font-semibold" style="background:rgba(0,122,255,0.10);color:#0066CC;">Q${i+1}</span>
+      <div class="flex items-start justify-between gap-3">
+        <h3 class="text-[16px] font-semibold pl-9" style="color:var(--ink-1);">${esc(q.q)}</h3>
+        <button type="button" class="copy textlink shrink-0" data-copy="${esc(copy)}" aria-label="复制押题：Q${i+1}">复制</button>
+      </div>
+      <p class="text-[13px] mt-4" style="color:var(--ink-3);">为什么会问</p>
+      <p class="text-[15px] mt-0.5 leading-relaxed" style="color:var(--ink-2);">${esc(q.why)}</p>
+      <p class="text-[13px] mt-3" style="color:var(--ink-3);">准备要点</p>
+      <p class="text-[15px] mt-0.5 leading-relaxed" style="color:var(--ink-2);">${esc(q.prep)}</p>
+    </article>`;
+  }).join('');
+
+  return `
+  ${growthHTML(r, base)}
+  <section class="rl-card p-6 sm:p-8 trl" id="reportCard">
+    <div class="flex flex-col sm:flex-row items-center gap-8">
+      <div class="relative w-[104px] h-[104px] shrink-0 sm:w-[140px] sm:h-[140px]">
+        <svg class="w-full h-full" viewBox="0 0 140 140" role="img" aria-label="匹配度 ${r.total} 分，评级 ${r.grade}">
+          <defs>
+            <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#0071E3"/>
+              <stop offset="100%" stop-color="#5E5CE6"/>
+            </linearGradient>
+          </defs>
+          <circle cx="70" cy="70" r="66" fill="none" stroke="#ECECF0" stroke-width="9"/>
+          <circle id="ringArc" cx="70" cy="70" r="66" fill="none" stroke="url(#ringGrad)" stroke-width="9"
+            stroke-linecap="round" stroke-dasharray="414.69" stroke-dashoffset="414.69" transform="rotate(-90 70 70)"/>
+        </svg>
+        <div class="absolute inset-0 flex flex-col items-center justify-center gap-1">
+          <span id="scoreNum" class="tabular text-[28px] sm:text-[34px] font-semibold leading-none tracking-[-0.02em]" style="color:var(--ink-1);">0</span>
+          <span class="text-[11px] font-medium px-2 py-[2px] rounded-full" style="${GRADE_PILL[r.grade]}">${r.grade} · ${GRADE_NAME[r.grade]}</span>
+        </div>
+      </div>
+      <div class="flex-1 space-y-3 text-center sm:text-left">
+        <p class="text-[20px] sm:text-[22px] font-semibold tracking-tight" style="color:var(--ink-1);">${GRADE_HEAD[r.grade]}</p>
+        <p class="text-[15px]" style="color:var(--ink-2);">${GRADE_LINE[r.grade]}</p>
+        <p class="text-[13px] tabular" style="color:var(--ink-3);">
+          JD 要求 ${r.years.req ?? '未明确'} 年经验 · 简历约 ${r.years.act} 年 · 命中 ${r.matchedKeywords.length}/${denom} 个关键词
+        </p>
+        <p class="text-[12px]" style="color:var(--ink-3);">评分仅供参考，不代表实际 ATS / HR 判断</p>
+      </div>
+    </div>
+
+    <div class="mt-8 space-y-4">
+      ${dims.map(d => `
+      <div class="flex items-center gap-4">
+        <span class="eyebrow w-20 shrink-0 whitespace-nowrap">${d.name}</span>
+        <div class="flex-1 h-2.5 rounded-full" style="background:#ECECF0;" title="${esc(d.note)}">
+          <div class="dim-bar h-full rounded-full" style="width:0;" data-key="${d.key}"
+            data-w="${d.score}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${d.score}"></div>
+        </div>
+        <span class="tabular text-[14px] font-semibold w-10 text-right" style="color:var(--ink-1);">${d.score}</span>
+      </div>`).join('')}
+    </div>
+
+    <div class="mt-8 kw-grid grid grid-cols-1 gap-6">
+      <div>
+        <p class="eyebrow mb-3">命中 ${r.matchedKeywords.length} 个</p>
+        <div class="flex flex-wrap gap-2">${hitChips}</div>
+      </div>
+      <div>
+        <p class="eyebrow mb-3">缺失 ${r.missingKeywords.length} 个</p>
+        ${missBlock}
+      </div>
+    </div>
+  </section>
+
+  <section class="mt-6 rl-card p-6 sm:p-8 trl" id="flagArea">
+    <div class="panel-head">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3 L22 20 H2 Z" stroke="#FF3B30" stroke-width="2" stroke-linejoin="round"/><path d="M12 10 v4" stroke="#FF3B30" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17" r="1.1" fill="#FF3B30"/></svg>
+      <p class="eyebrow">红旗检测（${flags.length} 项）</p>
+    </div>
+    ${flags.length
+      ? `<div class="space-y-3">${flagCards}</div>`
+      : `<p class="text-[15px]" style="color:var(--ink-2);">未发现明显红旗，这份简历的基本功扎实</p>`}
+  </section>
+
+  <section class="mt-6 rl-card p-6 sm:p-8 trl" id="interviewArea">
+    <div class="panel-head">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6 a3 3 0 0 1 3-3 h10 a3 3 0 0 1 3 3 v7 a3 3 0 0 1-3 3 H10 l-4.5 4 v-4 H7 a3 3 0 0 1-3-3 Z" stroke="#0071E3" stroke-width="2" stroke-linejoin="round"/><circle cx="9" cy="9.5" r="1" fill="#0071E3"/><circle cx="12.5" cy="9.5" r="1" fill="#0071E3"/><circle cx="16" cy="9.5" r="1" fill="#0071E3"/></svg>
+      <p class="eyebrow">面试押题（${iv.length} 问）</p>
+    </div>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">${ivCards}</div>
+  </section>
+
+  <section class="mt-6 rl-card p-6 sm:p-8 trl" id="suggestArea">
+    <div class="panel-head">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M14.5 4.5 l5 5 L8 21 H3 v-5 Z" stroke="#FF9500" stroke-width="2" stroke-linejoin="round"/><path d="M12.5 6.5 l5 5" stroke="#FF9500" stroke-width="2"/></svg>
+      <p class="eyebrow">改写建议（${sugs.length} 条）</p>
+    </div>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">${sugCards}</div>
+  </section>
+
+  <div class="mt-6 flex flex-wrap gap-3 no-print">
+    <button id="btnCopyReport" type="button" class="btn-primary">复制完整报告</button>
+    <button id="btnPrint" type="button" class="btn-secondary">打印 / 存 PDF</button>
+  </div>`;
+}
+
+const RING_C = 414.69; // 2π×66
+function easeOutCubic(t){ return 1 - Math.pow(1 - t, 3); }
+function animateCount(el, target, dur){
+  const t0 = performance.now();
+  function frame(now){
+    const p = Math.min(1, (now - t0) / dur);
+    el.textContent = (target * easeOutCubic(p)).toFixed(1);
+    if(p < 1) requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+function startReportAnims(r){
+  const arc = document.getElementById('ringArc');
+  const t0 = performance.now();
+  (function ringFrame(now){
+    const p = Math.min(1, (now - t0) / 900);
+    arc.style.strokeDashoffset = String(RING_C * (1 - (r.total / 100) * easeOutCubic(p)));
+    if(p < 1) requestAnimationFrame(ringFrame);
+  })(performance.now());
+  animateCount(document.getElementById('scoreNum'), r.total, 900);
+  // 维度条：等两帧让初始 0 宽渲染后动画到目标值（900ms ease-out）
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    document.querySelectorAll('.dim-bar').forEach(el => { el.style.width = el.dataset.w + '%'; });
+  }));
+}
+
+/* ==========================================================
+   P4 STAR 改写建议生成器（§6.8/6.9：≤8 条，硬性>技术>产品>运营>量化>结构）
+   ========================================================== */
+const KW_SCENE = { 技术:'XX 系统优化项目', 产品:'产品迭代项目', 运营:'用户运营活动' };
+const KW_EXAMPLE = {
+  技术: w => `示例：在 XX 系统优化项目中负责${w}相关工作，通过索引与慢查询治理，实现查询耗时下降 40%。`,
+  产品: w => `示例：在产品迭代项目中负责${w}相关工作，通过用户调研与优先级排序，实现月活跃用户提升 12%。`,
+  运营: w => `示例：在用户运营活动中负责${w}相关工作，通过分层推送与利益点设计，实现复购率提升 8%。`
+};
+function buildSuggestions(r){
+  const s = [];
+  // ① 硬性条件缺失（左色条 #FF3B30）
+  for(const h of r.hardReq.miss){
+    s.push({ type:'hard', bar:'#FF3B30', key:h, title:`缺少「${h}」`,
+      body:`若确实具备，请在简历教育背景或证书栏明确写出；若不打算补，投递时避开硬性要求该条件的岗位。` });
+  }
+  // ② 缺失关键词（剔除已被硬性覆盖的词，如 PMP），按分组权重 技术>产品>运营
+  const hardWords = new Set(r.hardReq.miss.map(w => removeNoise(w)));
+  const kw = r.missingKeywords.filter(k => !hardWords.has(removeNoise(k.word)))
+    .sort((a, b) => (b.weight || 0) - (a.weight || 0)); // 稳定排序保持 JD 内顺序
+  for(const k of kw){
+    const sc = KW_SCENE[k.group] || 'XX 项目';
+    s.push({ type:'kw', bar:'#FF3B30', key:removeNoise(k.word), title:`缺失「${k.word}」`,
+      body:`建议在工作或项目经历中补充相关描述，参考句式："在${sc}中负责${k.word}相关工作，通过{方法/动作}，实现{可量化结果}。"`,
+      example:(KW_EXAMPLE[k.group] || KW_EXAMPLE.产品)(k.word) });
+  }
+  // ③ 量化成果不足（命中句 <3，左色条 #FF9500）
+  if(r.quantified.length < 3){
+    s.push({ type:'quant', bar:'#FF9500', key:'quant', title:'量化成果不足',
+      body:`目前仅有 ${r.quantified.length} 条量化成果。建议在每条经历末尾补充数字结果（百分比/金额/量级），例如："…实现月召回率提升 18%"。` });
+  }
+  // ④ 结构建议（缺 项目/技能/证书 等关键区，左色条 #FF9500）
+  const foundSet = new Set(r.structure.found);
+  for(const z of ['项目','技能','证书']){
+    if(!foundSet.has(z)) s.push({ type:'struct', bar:'#FF9500', key:z, title:`补充「${z}」分区`,
+      body:`建议补充「${z}」板块，让 HR 10 秒内定位关键信息。` });
+  }
+  return s.slice(0, 8);
+}
+function suggestionCardHTML(s, i){
+  const txt = s.title + '\n' + s.body + (s.example ? '\n' + s.example : '');
+  return `
+  <article class="sug-card relative bg-white rounded-[12px] border border-black/5 pl-4 pr-3 py-4 trl rise-in" style="--i:${i}" id="sug-${s.type}-${s.key}"
+    ${s.key ? `data-word="${s.key}"` : ''}>
+    <div class="absolute left-0 top-3 bottom-3 w-[3px] rounded-full" style="background:${s.bar}"></div>
+    <div class="flex items-start justify-between gap-3">
+      <h3 class="text-[16px] font-semibold" style="color:var(--ink-1);">${s.title}</h3>
+      <button type="button" class="copy textlink" data-copy="${esc(txt)}" aria-label="复制建议：${s.title}">复制</button>
+    </div>
+    <p class="text-[15px] mt-1 leading-relaxed" style="color:var(--ink-2);">${s.body}</p>
+    ${s.example ? `<p class="text-[13px] mt-2 leading-relaxed" style="color:var(--ink-3);">${s.example}</p>` : ''}
+  </article>`;
+}
+function legacyCopy(t){
+  const ta = document.createElement('textarea');
+  ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0';
+  ta.style.left = '0'; ta.style.top = '0';
+  document.body.appendChild(ta); ta.focus(); ta.select();
+  let ok = false;
+  try{ ok = document.execCommand('copy'); }catch(e){}
+  document.body.removeChild(ta);
+  return ok;
+}
+/* 可见 Toast：让用户明确看到"已复制"等操作反馈 */
+let toastTimer = null;
+function showToast(msg){
+  const el = document.getElementById('visToast');
+  if(!el) return;
+  el.textContent = msg;
+  el.classList.add('show');
+  el.setAttribute('aria-hidden', 'false');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.classList.remove('show'); el.setAttribute('aria-hidden', 'true'); }, 2200);
+}
+function copyText(txt, label = '建议已复制'){
+  const announce = () => { const lv = document.getElementById('liveToast'); if(lv) lv.textContent = label; showToast(label); };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(announce).catch(() => { legacyCopy(txt); announce(); });
+  } else { legacyCopy(txt); announce(); }
+}
+
+/* ==========================================================
+   P7 成长回路 + 历史抽屉 + 一键复制报告（§3.3/§3.4·Prompt 7）
+   ========================================================== */
+const Store = {
+  get(k){ try{ return JSON.parse(localStorage.getItem(k)); } catch(e){ return null; } },
+  set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); } catch(e){} },
+  del(k){ try{ localStorage.removeItem(k); } catch(e){} }
+};
+const GROW_KEY = 'resumeLensBaseline';
+const HIST_KEY = 'resumeLensHistory';
+
+function saveBaseline(r){
+  Store.set(GROW_KEY, { total: r.total, dims: r.dimensions.map(d => ({ key: d.key, score: d.score })), time: Date.now() });
+}
+function saveHistory(jdText, resumeText, r){
+  const list = Store.get(HIST_KEY) || [];
+  list.unshift({ ts: Date.now(), jdPreview: String(jdText).replace(/\s+/g, ' ').slice(0, 30), jdText, resumeText, total: r.total, grade: r.grade });
+  Store.set(HIST_KEY, list.slice(0, 10));
+}
+function relTime(ts){
+  const s = Math.max(0, (Date.now() - ts) / 1000);
+  if(s < 60) return '刚刚';
+  if(s < 3600) return Math.floor(s / 60) + ' 分钟前';
+  if(s < 86400) return Math.floor(s / 3600) + ' 小时前';
+  return Math.floor(s / 86400) + ' 天前';
+}
+
+/* ---- 完整报告文本 ---- */
+function dimScore(r, key){ const d = r.dimensions.find(x => x.key === key); return d ? d.score : 0; }
+function buildReportText(r, base){
+  const L = [];
+  L.push('简历透镜分析报告');
+  L.push('============');
+  const diff = base ? Math.round((r.total - base.total) * 10) / 10 : null;
+  L.push(`匹配度：${r.total} 分（${r.grade}）` + (diff === null ? '' : `；首次 ${base.total} → 本次 ${r.total}（${diff >= 0 ? '+' + diff : diff}）`));
+  L.push(`维度：关键词覆盖 ${dimScore(r, 'keywords')}/100 · 经验年限 ${dimScore(r, 'years')} · 量化成果 ${dimScore(r, 'quantified')} · 硬性条件 ${dimScore(r, 'hard')} · 简历结构 ${dimScore(r, 'structure')}`);
+  L.push(`命中关键词：${r.matchedKeywords.map(k => k.word).join('、') || '无'} ｜ 缺失关键词：${r.missingKeywords.map(k => k.word).join('、') || '无'}`);
+  if(r.redFlags.length){
+    r.redFlags.forEach(f => L.push(`红旗 ${f.id}｜${f.title}：${f.detail}（建议：${f.advice}）`));
+  } else L.push('红旗检测：未发现明显红旗');
+  r.interview.forEach((q, i) => L.push(`押题 Q${i + 1}：${q.q}；准备要点：${q.prep}`));
+  const sugs = buildSuggestions(r);
+  sugs.forEach((s, i) => L.push(`建议 ${i + 1}：${s.title}；${s.body}`));
+  L.push('——');
+  L.push('得分基于文本算法，仅供参考 · 简历透镜');
+  return L.join('\n');
+}
+
+/* ---- 历史抽屉 ---- */
+const drawerEl = $('historyDrawer'), drawerMask = $('drawerMask'), historyListEl = $('historyList');
+let lastFocused = null;
+function renderHistory(){
+  const list = Store.get(HIST_KEY) || [];
+  if(!list.length){
+    historyListEl.innerHTML = '<p class="text-[14px]" style="color:var(--ink-3);">暂无历史记录</p>';
+    return;
+  }
+  historyListEl.innerHTML = list.map((h, i) => `
+    <div class="hist-item flex items-center gap-3 py-3 border-b border-black/5" data-idx="${i}">
+      <button type="button" class="flex-1 text-left hist-open" data-idx="${i}">
+        <p class="text-[14px] font-medium line-clamp-2" style="color:var(--ink-1);">${esc(h.jdPreview || '未命名岗位')}</p>
+        <p class="text-[12px] mt-0.5" style="color:var(--ink-3);">${relTime(h.ts)}</p>
+      </button>
+      <span class="tabular text-[13px] font-semibold px-2.5 py-1 rounded-full shrink-0" style="background:rgba(0,113,227,0.10);color:#0066CC;">${h.total} 分 ${h.grade}</span>
+      <button type="button" class="textlink hist-del" data-idx="${i}" aria-label="删除该条历史">删除</button>
+    </div>`).join('');
+}
+function openDrawer(){
+  renderHistory();
+  lastFocused = document.activeElement;
+  drawerEl.classList.add('open'); drawerMask.classList.add('open');
+  drawerEl.setAttribute('aria-hidden', 'false'); drawerMask.setAttribute('aria-hidden', 'false');
+  document.body.style.overflow = 'hidden';
+  $('drawerTitle').focus();
+}
+function closeDrawer(){
+  drawerEl.classList.remove('open'); drawerMask.classList.remove('open');
+  drawerEl.setAttribute('aria-hidden', 'true'); drawerMask.setAttribute('aria-hidden', 'true');
+  document.body.style.overflow = '';
+  if(lastFocused instanceof HTMLElement && lastFocused.isConnected) lastFocused.focus();
+}
+const drawerFocusables = () => Array.from(drawerEl.querySelectorAll('button:not([disabled])'));
+drawerEl.addEventListener('keydown', (e) => {
+  if(e.key === 'Escape'){ closeDrawer(); return; }
+  if(e.key !== 'Tab') return;
+  const els = drawerFocusables();
+  if(!els.length) return;
+  if(e.shiftKey && document.activeElement === els[0]){ e.preventDefault(); els[els.length - 1].focus(); }
+  else if(!e.shiftKey && document.activeElement === els[els.length - 1]){ e.preventDefault(); els[0].focus(); }
+});
+drawerMask.addEventListener('click', closeDrawer);
+$('btnCloseDrawer').addEventListener('click', closeDrawer);
+$('btnHistory').addEventListener('click', openDrawer);
+$('btnClearHistory').addEventListener('click', () => { Store.del(HIST_KEY); renderHistory(); });
+historyListEl.addEventListener('click', (e) => {
+  const del = e.target.closest('.hist-del');
+  if(del){
+    const list = Store.get(HIST_KEY) || [];
+    list.splice(+del.dataset.idx, 1);
+    Store.set(HIST_KEY, list);
+    renderHistory();
+    return;
+  }
+  const open = e.target.closest('.hist-open');
+  if(open){
+    const list = Store.get(HIST_KEY) || [];
+    const h = list[+open.dataset.idx];
+    if(!h) return;
+    closeDrawer();
+    jdInput.value = h.jdText; jdInput.dispatchEvent(new Event('input'));
+    resumeInput.value = h.resumeText; resumeInput.dispatchEvent(new Event('input'));
+    btnAnalyze.click();
+  }
+});
+
+/* ---- 报告区事件委托：复制/打印/重置基线 P7 ---- */
+reportArea.addEventListener('click', (e) => {
+  const cr = e.target.closest('#btnCopyReport');
+  if(cr){
+    if(window.__lastResult) copyText(buildReportText(window.__lastResult, Store.get(GROW_KEY)), '完整报告已复制');
+    return;
+  }
+  const pr = e.target.closest('#btnPrint');
+  if(pr){
+    showToast('在打印窗口选择「另存为 PDF」即可导出');
+    try{ window.print(); }catch(err){}
+    return;
+  }
+  const gr = e.target.closest('#growthReset');
+  if(gr){
+    const r = window.__lastResult;
+    if(r){
+      saveBaseline(r);
+      reportArea.innerHTML = reportHTML(r, Store.get(GROW_KEY));
+      startReportAnims(r);
+    }
+    return;
+  }
+});
+reportArea.addEventListener('click', (e) => {
+  const chip = e.target.closest('[data-miss]');
+  if(chip){
+    const card = document.getElementById('sug-kw-' + removeNoise(chip.dataset.miss));
+    if(card){
+      card.scrollIntoView({ behavior:'smooth', block:'center' });
+      card.classList.add('sug-highlight');
+      setTimeout(() => card.classList.remove('sug-highlight'), 1000);
+    }
+    return;
+  }
+  const btn = e.target.closest('.copy');
+  if(btn){
+    copyText(btn.dataset.copy);
+    const orig = btn.textContent;
+    btn.textContent = '✓ 已复制';
+    setTimeout(() => { btn.textContent = orig; }, 1600);
+  }
+});
+
+btnAnalyze.addEventListener('click', () => {
+  clearErrors();
+  let ok = true;
+  const jdVal = jdInput.value.trim();
+  const rVal = resumeInput.value.trim();
+
+  if (!jdVal){
+    showError(jdInput, jdError, '这里还没填哦');
+    ok = false;
+  } else if (countChars(jdInput) < 50){
+    showError(jdInput, jdError, '内容太短，分析意义不大');
+    ok = false;
+  }
+  if (!rVal){
+    showError(resumeInput, resumeError, '这里还没填哦');
+    ok = false;
+  } else if (countChars(resumeInput) < 50){
+    showError(resumeInput, resumeError, '内容太短，分析意义不大');
+    ok = false;
+  }
+  if (!ok) return;
+
+  // loading 状态
+  btnAnalyze.disabled = true;
+  const original = btnAnalyze.innerHTML;
+  btnAnalyze.innerHTML = '<span class="inline-block w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin"></span> 正在拆解 JD…';
+
+  // 骨架屏
+  reportArea.innerHTML = skeletonHTML();
+  reportArea.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  const skTip = document.getElementById('skTip');
+  let si = 0;
+  const stepTimer = setInterval(() => {
+    si = (si + 1) % ANALYZE_STEPS.length;
+    if (skTip) skTip.textContent = ANALYZE_STEPS[si] + '…';
+  }, 620);
+
+  const result = MatchEngine.analyze(jdVal, rVal);
+  window.__lastResult = result;
+  const base = Store.get(GROW_KEY); // 本次分析前的基线（首次为 null）
+  console.log('=== ResumeLens MatchEngine.analyze ===');
+  console.log(JSON.stringify(result, null, 2));
+
+  // 四步文案走完（~2.5s）→ 骨架 200ms 淡出 → 渲染报告
+  setTimeout(() => {
+    clearInterval(stepTimer);
+    reportArea.style.transition = 'opacity .2s ease';
+    reportArea.style.opacity = '0';
+    setTimeout(() => {
+      reportArea.innerHTML = reportHTML(result, base);
+      reportArea.style.opacity = '1';
+      startReportAnims(result);
+      btnAnalyze.disabled = false;
+      btnAnalyze.innerHTML = original;
+      if(!base) saveBaseline(result); // 首次成功分析自动存基线
+      saveHistory(jdVal, rVal, result); // 每次分析入历史（最多 10 条）
+    }, 200);
+  }, 2500);
+});
+
+/* ---------- P8 关于弹窗 + 初始空态 ---------- */
+const aboutModal = $('aboutModal'), aboutMask = $('aboutMask');
+function openAbout(){
+  aboutModal.classList.add('open'); aboutMask.classList.add('open');
+  aboutModal.setAttribute('aria-hidden', 'false'); aboutMask.setAttribute('aria-hidden', 'false');
+  $('btnCloseAbout').focus();
+}
+function closeAbout(){
+  aboutModal.classList.remove('open'); aboutMask.classList.remove('open');
+  aboutModal.setAttribute('aria-hidden', 'true'); aboutMask.setAttribute('aria-hidden', 'true');
+  $('btnAbout').focus();
+}
+$('btnAbout').addEventListener('click', openAbout);
+$('btnCloseAbout').addEventListener('click', closeAbout);
+aboutMask.addEventListener('click', closeAbout);
+document.addEventListener('keydown', (e) => { if(e.key === 'Escape' && aboutModal.classList.contains('open')) closeAbout(); });
+reportArea.innerHTML = placeholderHTML(); // 初始空态
+</script>
+</body>
+</html>
