@@ -177,9 +177,12 @@
           style="color:var(--ink-1);background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.12);font-weight:500;">简历分析</button>
         <button id="tabBoard" class="tab-btn px-3.5 py-1.5 text-[13px] rounded-full trl" type="button"
           style="color:var(--ink-2);">求职看板</button>
+        <button id="tabReview" class="tab-btn px-3.5 py-1.5 text-[13px] rounded-full trl" type="button"
+          style="color:var(--ink-2);">面试复盘</button>
       </nav>
       <!-- 移动端快捷入口 -->
       <button id="tabBoardMobile" class="textlink sm:hidden" type="button">看板</button>
+      <button id="tabReviewMobile" class="textlink sm:hidden" type="button">复盘</button>
       <button id="btnHistory" class="textlink" type="button">历史记录</button>
       <button id="btnAbout" class="textlink" type="button">关于</button>
     </div>
@@ -272,6 +275,33 @@
     <section class="mt-6" id="trackList"></section>
   </div><!-- /viewBoard -->
 
+  <!-- P11 面试复盘视图 -->
+  <div id="viewReview" class="hidden">
+    <section class="rl-card p-5 sm:p-8">
+      <div class="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p class="eyebrow">面试复盘</p>
+          <h1 class="text-[24px] sm:text-[28px] font-semibold tracking-tight leading-tight mt-1" style="color:var(--ink-1);">把押题变成可检验的承诺</h1>
+          <p class="text-[14px] mt-2" style="color:var(--ink-2);">面试后记下真实问题，逐题勾选「这题押中了没」——押题准不准，命中率替你说话。</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button id="btnReviewBack" class="textlink sm:hidden" type="button">‹ 返回分析</button>
+          <button id="btnReviewHintStart" class="textlink" type="button" title="把最近一次押题的题目带入一条新复盘">从押题带入</button>
+          <button id="btnAddReview" type="button" class="flex items-center gap-1.5 px-5 py-2.5 rounded-full text-[14px] font-medium text-white trl"
+            style="background-color:var(--accent);background-image:linear-gradient(135deg,#0071E3,#0A84FF);box-shadow:0 4px 14px rgba(0,113,227,0.35);height:40px;"
+            onmouseover="this.style.filter='brightness(1.06)'" onmouseout="this.style.filter=''"
+            onmousedown="this.style.transform='scale(.98)'" onmouseup="this.style.transform='scale(1)'">＋ 新增复盘</button>
+        </div>
+      </div>
+      <!-- 命中率统计（四格） -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6" id="reviewStats"></div>
+    </section>
+    <!-- 最近一次押题迷你卡（与押题联动） -->
+    <section class="mt-6" id="reviewHintCard"></section>
+    <!-- 复盘列表 -->
+    <section class="mt-6" id="reviewList"></section>
+  </div><!-- /viewReview -->
+
 </main>
 
 <!-- 无障碍播报（复制结果等） -->
@@ -331,6 +361,49 @@
   <div class="flex gap-2 mt-6">
     <button id="btnTrackSave" type="button" class="btn-primary flex-1">保存</button>
     <button id="btnTrackCancel" type="button" class="btn-secondary flex-1">取消</button>
+  </div>
+</div>
+
+<!-- P11 面试复盘弹层 -->
+<div id="reviewMask" class="drawer-mask" aria-hidden="true"></div>
+<div id="reviewModal" class="modal" role="dialog" aria-modal="true" aria-label="新增 / 编辑面试复盘" aria-hidden="true">
+  <div class="flex items-center justify-between gap-3">
+    <p id="reviewModalTitle" class="text-[17px] font-semibold" style="color:var(--ink-1);">新增复盘</p>
+    <button id="btnReviewFillHint" type="button" class="textlink" title="把最近一次押题的题目带入问题列表">从押题带入</button>
+  </div>
+  <div class="mt-4 space-y-3">
+    <div class="grid sm:grid-cols-2 gap-3">
+      <div>
+        <label class="eyebrow" for="reviewCompany">公司名称</label>
+        <input id="reviewCompany" type="text" class="border border-black/10 rounded-xl px-3 py-2.5 w-full text-[14px] outline-none focus:border-[color:var(--accent)] focus:shadow-[0_0_0_4px_rgba(0,113,227,0.12)] transition" style="color:var(--ink-1);background:#fff;" placeholder="例：字节跳动">
+      </div>
+      <div>
+        <label class="eyebrow" for="reviewRole">岗位名称</label>
+        <input id="reviewRole" type="text" class="border border-black/10 rounded-xl px-3 py-2.5 w-full text-[14px] outline-none focus:border-[color:var(--accent)] focus:shadow-[0_0_0_4px_rgba(0,113,227,0.12)] transition" style="color:var(--ink-1);background:#fff;" placeholder="例：高级产品经理">
+      </div>
+    </div>
+    <div class="grid sm:grid-cols-2 gap-3">
+      <div>
+        <label class="eyebrow" for="reviewDate">面试日期</label>
+        <input id="reviewDate" type="date" class="border border-black/10 rounded-xl px-3 py-2.5 w-full text-[14px] outline-none focus:border-[color:var(--accent)] focus:shadow-[0_0_0_4px_rgba(0,113,227,0.12)] transition" style="color:var(--ink-1);background:#fff;">
+      </div>
+      <div>
+        <label class="eyebrow" id="reviewOverallLbl">整体自评</label>
+        <div class="flex items-center gap-2 mt-2.5">
+          <div id="reviewOverallStars" class="flex gap-1" role="group" aria-labelledby="reviewOverallLbl"></div>
+          <span id="reviewOverallVal" class="text-[12px] tabular" style="color:var(--ink-3);">未评</span>
+        </div>
+      </div>
+    </div>
+    <div>
+      <label class="eyebrow" for="reviewQList">面试问题<span class="text-[11px] font-normal" style="color:var(--ink-3);"> · 勾选「押中了」即计入命中率</span></label>
+      <div id="reviewQList" class="mt-1.5 space-y-3"></div>
+      <button id="btnReviewAddQ" type="button" class="textlink mt-2">＋ 添加一个问题</button>
+    </div>
+  </div>
+  <div class="flex gap-2 mt-6">
+    <button id="btnReviewSave" type="button" class="btn-primary flex-1">保存复盘</button>
+    <button id="btnReviewCancel" type="button" class="btn-secondary flex-1">取消</button>
   </div>
 </div>
 
@@ -1630,27 +1703,29 @@ function trackFromJd(){
   const firstLine = jd.split('\n').map(s => s.trim()).find(s => /[\u4e00-\u9fa5]/.test(s) && s.length >= 4 && s.length <= 24);
   openTrackModal({ company:'', role: (titleMatch && titleMatch[1]) || (kwMatch && kwMatch[1]) || firstLine || '', status:'fav', date:new Date().toISOString().slice(0, 10), note:'' });
 }
-// 视图切换
-function tabAnalyze(){ $('viewAnalyze').classList.remove('hidden'); $('viewBoard').classList.add('hidden'); setTabState(true); }
-function tabBoard(){
-  $('viewAnalyze').classList.add('hidden'); $('viewBoard').classList.remove('hidden');
-  setTabState(false);
-  renderTrack();
+// 视图切换（三视图：简历分析 / 求职看板 / 面试复盘）
+function tabAnalyze(){ showView('analyze'); }
+function tabBoard(){ showView('board'); renderTrack(); }
+function tabReview(){ showView('review'); renderReview(); }
+function showView(v){
+  $('viewAnalyze').classList.toggle('hidden', v !== 'analyze');
+  $('viewBoard').classList.toggle('hidden', v !== 'board');
+  $('viewReview').classList.toggle('hidden', v !== 'review');
+  setTabState(v);
 }
-function setTabState(analyzeActive){
-  const a = $('tabAnalyze'), b = $('tabBoard');
-  a.style.background = analyzeActive ? '#fff' : 'transparent';
-  a.style.color = analyzeActive ? 'var(--ink-1)' : 'var(--ink-2)';
-  a.style.boxShadow = analyzeActive ? '0 1px 3px rgba(0,0,0,0.12)' : 'none';
-  a.style.fontWeight = analyzeActive ? '500' : '400';
-  b.style.background = analyzeActive ? 'transparent' : '#fff';
-  b.style.color = analyzeActive ? 'var(--ink-2)' : 'var(--ink-1)';
-  b.style.boxShadow = analyzeActive ? 'none' : '0 1px 3px rgba(0,0,0,0.12)';
-  b.style.fontWeight = analyzeActive ? '400' : '500';
-  a.setAttribute('aria-selected', analyzeActive);
-  b.setAttribute('aria-selected', !analyzeActive);
+function setTabState(active){
+  const map = [['tabAnalyze','analyze'],['tabBoard','board'],['tabReview','review']];
+  map.forEach(([id, key]) => {
+    const el = $(id);
+    const on = active === key;
+    el.style.background = on ? '#fff' : 'transparent';
+    el.style.color = on ? 'var(--ink-1)' : 'var(--ink-2)';
+    el.style.boxShadow = on ? '0 1px 3px rgba(0,0,0,0.12)' : 'none';
+    el.style.fontWeight = on ? '500' : '400';
+    el.setAttribute('aria-selected', on);
+  });
 }
-// 事件绑定
+// 事件绑定（P10 看板 + 视图切换）
 $('tabAnalyze').addEventListener('click', tabAnalyze);
 $('tabBoard').addEventListener('click', tabBoard);
 $('tabBoardMobile').addEventListener('click', tabBoard);
@@ -1676,7 +1751,6 @@ $('trackList').addEventListener('click', (e) => {
   }
   if(e.target.closest('#btnTrackEmptyAdd')){ openTrackModal(null); }
 });
-// 弹层内状态选择
 $('trackStatusPicker').addEventListener('click', (e) => {
   const btn = e.target.closest('.status-opt');
   if(!btn) return;
@@ -1687,6 +1761,311 @@ $('trackStatusPicker').addEventListener('click', (e) => {
   btn.style.boxShadow = '0 0 0 2px rgba(0,113,227,0.18)';
   btn.style.borderColor = btn.style.color; btn.style.opacity = '1';
   btn.setAttribute('data-active', '1');
+});
+
+/* ==========================================================
+   P11 面试复盘（§3.5·v5）：问题记录 + 命中率统计 + 押题联动
+   ========================================================== */
+const REVIEW_KEY = 'resumeLensReviews';
+const reviewModal = $('reviewModal'), reviewMask = $('reviewMask');
+let reviewEditingId = null; // null = 新增
+$('reviewOverallStars').innerHTML = starsMarkup(0); // 整体自评星级初始渲染
+
+function starsMarkup(val){
+  return Array.from({length: 5}, (_, i) =>
+    `<button type="button" class="star-btn tabular text-[16px] leading-none trl" data-sval="${i + 1}"
+      style="color:#D8D8DE;" aria-label="自评 ${i + 1} 分">${val && i < val ? '★' : '☆'}</button>`).join('');
+}
+function paintStars(container, val, labelEl){
+  container.dataset.val = val;
+  container.querySelectorAll('.star-btn').forEach(b => {
+    const on = +b.dataset.sval <= val;
+    b.dataset.on = on ? '1' : '';
+    b.textContent = on ? '★' : '☆';
+    b.style.color = on ? '#FF9500' : '#D8D8DE';
+  });
+  if(labelEl) labelEl.textContent = val ? (val + ' 分') : '未评';
+}
+function hitBtnMarkup(hit){
+  const on = hit === 1;
+  return `<button type="button" class="q-hit shrink-0 px-3 py-2 rounded-full text-[13px] font-semibold trl border"
+    data-hit="${on ? '1' : '0'}" aria-pressed="${on}"
+    style="color:${on ? '#248A3D' : 'var(--ink-3)'};background:${on ? 'rgba(52,199,89,0.12)' : 'rgba(0,0,0,0.05)'};border-color:transparent;">${on ? '✓ 押中了' : '未押中'}</button>`;
+}
+function toggleHit(btn){
+  const on = btn.dataset.hit !== '1';
+  btn.dataset.hit = on ? '1' : '0';
+  btn.setAttribute('aria-pressed', on);
+  btn.textContent = on ? '✓ 押中了' : '未押中';
+  btn.style.color = on ? '#248A3D' : 'var(--ink-3)';
+  btn.style.background = on ? 'rgba(52,199,89,0.12)' : 'rgba(0,0,0,0.05)';
+}
+function reviewRowHTML(q){
+  const self = q && q.self ? +q.self : 0;
+  const text = (q && q.text) || '';
+  const hit = q && q.hit === 1 ? 1 : 0;
+  const note = (q && q.note) || '';
+  return `
+  <div class="review-qrow rounded-[14px] p-3.5 border space-y-2.5 trl" data-qrow=""
+    style="border-color:rgba(0,0,0,0.08);background:rgba(255,255,255,0.6);">
+    <div class="flex items-start gap-2">
+      <input type="text" class="q-text flex-1 min-w-0 border border-black/10 rounded-xl px-3 py-2 text-[14px] outline-none focus:border-[color:var(--accent)] focus:shadow-[0_0_0_4px_rgba(0,113,227,0.12)] transition" style="color:var(--ink-1);background:#fff;" placeholder="面试官问了什么？如：说说你推进过最难的一个项目" value="${esc(text)}">
+      ${hitBtnMarkup(hit)}
+      <button type="button" class="q-del shrink-0 textlink" style="color:var(--red);" aria-label="删除该问题">删除</button>
+    </div>
+    <div class="flex items-center gap-2">
+      <span class="eyebrow shrink-0">自评</span>
+      <div class="flex gap-1" data-stars data-val="${self}">${starsMarkup(self)}</div>
+      <span class="q-selfval text-[12px] tabular" style="color:var(--ink-3);">${self ? self + ' 分' : '未评'}</span>
+    </div>
+    <input type="text" class="q-note w-full border border-black/10 rounded-xl px-3 py-2 text-[13px] outline-none focus:border-[color:var(--accent)] focus:shadow-[0_0_0_4px_rgba(0,113,227,0.12)] transition" style="color:var(--ink-1);background:#fff;" placeholder="小记：哪里答得不好、下次怎么改（可选）" value="${esc(note)}">
+  </div>`;
+}
+function renderQList(qs){
+  qs = qs && qs.length ? qs : [{}];
+  $('reviewQList').innerHTML = qs.map(q => reviewRowHTML(q)).join('');
+  document.querySelectorAll('#reviewQList .review-qrow').forEach(row => {
+    const wrap = row.querySelector('[data-stars]');
+    paintStars(wrap, +wrap.dataset.val || 0, row.querySelector('.q-selfval'));
+  });
+}
+function guessJobCompany(jd){
+  const m = jd.match(/(?:公司|企业)(?:名称)?[:：]\s*([^\n，。,。]{1,20})/);
+  if(m) return m[1].trim();
+  const n = jd.match(/([\u4e00-\u9fa5A-Za-z0-9]{2,12}?(?:科技|技术|网络|信息|数字|智能|数据|软件|集团|股份|有限)(?:公司)?)/);
+  return n ? n[1] : '';
+}
+function guessJobRole(jd){
+  const titleMatch = jd.match(/职位(?:名称|title)?[:：]\s*([^\n，。,。]{1,16})/i);
+  const kwMatch = jd.match(/((?:资深|高级|初级|中级|助理|实习生)?.{0,6}?(?:产品经理|产品运营|用户运营|增长|运营|Java|前端|后端|测试|运维|算法|数据分析师|数据分析|设计师|HRBP|市场经理|销售经理))/);
+  const firstLine = jd.split('\n').map(s => s.trim()).find(s => /[\u4e00-\u9fa5]/.test(s) && s.length >= 4 && s.length <= 24);
+  return (titleMatch && titleMatch[1]) || (kwMatch && kwMatch[1]) || firstLine || '';
+}
+function lastInterviewQuestions(){
+  const r = window.__lastResult;
+  return (r && Array.isArray(r.interview)) ? r.interview : [];
+}
+function openReviewModal(rec){
+  reviewEditingId = rec ? rec.id : null;
+  $('reviewModalTitle').textContent = rec ? '编辑复盘' : '新增复盘';
+  const jd = jdInput.value.trim();
+  $('reviewCompany').value = rec ? (rec.company || '') : (jd ? guessJobCompany(jd) : '');
+  $('reviewRole').value = rec ? (rec.role || '') : (jd ? guessJobRole(jd) : '');
+  $('reviewDate').value = rec && rec.date ? rec.date : new Date().toISOString().slice(0, 10);
+  paintStars($('reviewOverallStars'), rec ? rec.overall || 0 : 0, $('reviewOverallVal'));
+  renderQList(rec ? rec.questions : []);
+  reviewModal.classList.add('open'); reviewMask.classList.add('open');
+  reviewModal.setAttribute('aria-hidden', 'false'); reviewMask.setAttribute('aria-hidden', 'false');
+  $('reviewCompany').focus();
+}
+function closeReviewModal(){
+  reviewModal.classList.remove('open'); reviewMask.classList.remove('open');
+  reviewModal.setAttribute('aria-hidden', 'true'); reviewMask.setAttribute('aria-hidden', 'true');
+}
+function loadHintQuestions(){
+  const qs = lastInterviewQuestions();
+  if(!qs.length){ showToast('还没有押题记录，先在「简历分析」做一次分析'); return; }
+  renderQList(qs.map(q => ({ text: q.q, hit: 1, self: 0, note: '' })));
+  showToast('已带入 ' + qs.length + ' 条押题，请逐题勾选命中');
+}
+function saveReview(){
+  const company = $('reviewCompany').value.trim();
+  if(!company){ $('reviewCompany').focus(); showToast('请填写公司名称'); return; }
+  let overall = 0;
+  document.querySelectorAll('#reviewOverallStars .star-btn').forEach(b => { if(b.dataset.on === '1') overall = Math.max(overall, +b.dataset.sval); });
+  const questions = [];
+  document.querySelectorAll('#reviewQList .review-qrow').forEach(row => {
+    const text = row.querySelector('.q-text').value.trim();
+    const note = row.querySelector('.q-note').value.trim();
+    const hit = row.querySelector('.q-hit').dataset.hit === '1' ? 1 : 0;
+    let self = 0;
+    row.querySelectorAll('.star-btn').forEach(b => { if(b.dataset.on === '1') self = Math.max(self, +b.dataset.sval); });
+    questions.push({ text, hit, self, note });
+  });
+  const rec = {
+    id: reviewEditingId || ('rv' + Date.now()),
+    company, role: $('reviewRole').value.trim(),
+    date: $('reviewDate').value || new Date().toISOString().slice(0, 10),
+    overall,
+    questions: questions.filter(q => q.text || q.note || q.hit === 1 || q.self > 0)
+  };
+  const list = Store.get(REVIEW_KEY) || [];
+  if(reviewEditingId){ const i = list.findIndex(x => x.id === reviewEditingId); if(i >= 0) list[i] = rec; }
+  else list.unshift(rec);
+  Store.set(REVIEW_KEY, list);
+  closeReviewModal();
+  renderReview();
+  showToast('已保存复盘');
+}
+function reviewStatsHTML(list){
+  const total = list.length;
+  let qTotal = 0, qHit = 0;
+  list.forEach(rv => (rv.questions || []).forEach(q => { qTotal++; if(q.hit === 1) qHit++; }));
+  const rate = qTotal ? Math.round(qHit / qTotal * 100) : 0;
+  let trend = '';
+  if(total >= 2){
+    const rt = list.map(rv => { const qs = rv.questions || []; const h = qs.filter(q => q.hit === 1).length; return qs.length ? h / qs.length : 0; });
+    const d = Math.round((rt[0] - rt[1]) * 100);
+    trend = d > 0 ? `↗ 比上次 +${d}%` : d === 0 ? '→ 与上次持平' : `↘ 比上次 ${d}%`;
+  } else if(total === 1){ trend = '首场复盘'; }
+  let badge = '';
+  const gold = qTotal && rate >= 70;
+  if(qTotal && rate >= 70) badge = '🔥 押题神准';
+  else if(qTotal && rate >= 50) badge = '🎯 押题有谱';
+  const cell = (num, label, color, sub) => `
+    <div class="rounded-[14px] p-4 text-center" style="background:linear-gradient(180deg,#FBFBFD,#F5F5F7);">
+      <p class="tabular text-[26px] font-semibold leading-none" style="color:${color};">${num}</p>
+      <p class="eyebrow mt-2">${label}</p>
+      ${sub ? `<p class="text-[11px] mt-1 tabular" style="color:var(--ink-3);">${sub}</p>` : ''}
+    </div>`;
+  const rateColor = qTotal ? (rate >= 70 ? '#248A3D' : rate >= 50 ? '#FF9500' : 'var(--ink-1)') : 'var(--ink-3)';
+  const badgeInner = badge
+    ? `<p class="text-[22px] leading-none">${badge.split(' ')[0]}</p>
+       <p class="text-[13px] font-semibold mt-1.5" style="color:${gold ? '#248A3D' : '#B45309'};">${badge.split(' ').slice(1).join(' ')}</p>
+       <p class="eyebrow mt-1.5">押题徽章</p>`
+    : `<p class="text-[13px] mt-2" style="color:var(--ink-3);">${qTotal ? '未解锁' : '—'}</p>
+       <p class="eyebrow mt-1.5">押题徽章</p>`;
+  return cell(total, '复盘次数', 'var(--ink-1)')
+    + cell(qTotal, '总问题数', 'var(--ink-2)')
+    + cell(qTotal ? rate + '%' : '—', '押题命中率', rateColor, trend)
+    + `<div class="rounded-[14px] p-4 flex flex-col items-center justify-center text-center" style="background:linear-gradient(180deg,#FBFBFD,#F5F5F7);">${badgeInner}</div>`;
+}
+function reviewCardHTML(rv, i){
+  const qs = rv.questions || [];
+  const hits = qs.filter(q => q.hit === 1).length;
+  const rate = qs.length ? Math.round(hits / qs.length * 100) : null;
+  const stars = rv.overall
+    ? '<span style="color:#FF9500;">' + '★'.repeat(rv.overall) + '</span><span style="color:#D8D8DE;">' + '☆'.repeat(5 - rv.overall) + '</span>'
+    : '<span style="color:#D8D8DE;">未评</span>';
+  const qRows = qs.length ? qs.map((q, qi) => `
+      <div class="flex items-start justify-between gap-3 py-2.5 border-b border-black/5 last:border-0">
+        <div class="min-w-0">
+          <p class="text-[14px] leading-relaxed" style="color:var(--ink-1);">${qi + 1}. ${esc(q.text || '（未记录问题）')}</p>
+          ${q.note ? `<p class="text-[12px] mt-1 leading-relaxed" style="color:var(--ink-2);">📝 ${esc(q.note)}</p>` : ''}
+        </div>
+        <div class="flex flex-col items-end gap-1.5 shrink-0">
+          <span class="px-2.5 py-0.5 rounded-full text-[12px] font-semibold whitespace-nowrap"
+            style="color:${q.hit === 1 ? '#248A3D' : 'var(--ink-3)'};background:${q.hit === 1 ? 'rgba(52,199,89,0.12)' : 'rgba(0,0,0,0.05)'};">${q.hit === 1 ? '✓ 押中' : '○ 未押中'}</span>
+          ${q.self > 0 ? `<span class="text-[12px]" style="color:#FF9500;">${'★'.repeat(q.self)}</span>` : ''}
+        </div>
+      </div>`).join('')
+    : `<p class="text-[13px] py-2" style="color:var(--ink-3);">本场未记录具体问题</p>`;
+  return `
+  <article class="rl-card p-5 sm:p-6 rise-in" style="--i:${Math.min(i, 8)}" data-idx="${i}">
+    <div class="flex flex-wrap items-start justify-between gap-3">
+      <div class="min-w-0">
+        <div class="flex flex-wrap items-center gap-2">
+          <h3 class="text-[16px] font-semibold truncate" style="color:var(--ink-1);">${esc(rv.company)}</h3>
+          ${rv.role ? `<span class="text-[13px]" style="color:var(--ink-3);">${esc(rv.role)}</span>` : ''}
+        </div>
+        <p class="text-[12px] mt-1.5 tabular" style="color:var(--ink-3);">${esc(rv.date || '')} · 整体自评 ${stars}</p>
+      </div>
+      <div class="flex flex-col items-end gap-2 shrink-0">
+        ${rate !== null ? `<span class="px-2.5 py-1 rounded-full text-[12px] font-semibold whitespace-nowrap"
+          style="color:${rate >= 50 ? '#248A3D' : 'var(--ink-3)'};background:${rate >= 50 ? 'rgba(52,199,89,0.12)' : 'rgba(0,0,0,0.05)'};">命中率 ${rate}%</span>` : ''}
+        <div class="flex items-center gap-1.5">
+          <button type="button" class="textlink review-edit" data-idx="${i}" aria-label="编辑 ${esc(rv.company)}">编辑</button>
+          <button type="button" class="textlink review-del" data-idx="${i}" style="color:var(--red);" aria-label="删除 ${esc(rv.company)}">删除</button>
+        </div>
+      </div>
+    </div>
+    <div class="mt-3 border-t border-black/5 pt-1">${qRows}</div>
+  </article>`;
+}
+function reviewEmptyHTML(){
+  return `
+  <section class="rl-card p-10 trl flex flex-col items-center text-center">
+    <svg width="88" height="76" viewBox="0 0 88 76" fill="none" aria-hidden="true">
+      <rect x="8" y="10" width="56" height="50" rx="9" stroke="#C7C7CC" stroke-width="2"/>
+      <path d="M24 40 a8 8 0 1 0 0.01 0" stroke="#C7C7CC" stroke-width="2"/>
+      <circle cx="24" cy="40" r="2.5" fill="#C7C7CC"/>
+      <path d="M18 24 h16 M18 32 h10" stroke="#C7C7CC" stroke-width="2" stroke-linecap="round"/>
+      <circle cx="66" cy="58" r="7" stroke="#0071E3" stroke-width="2"/>
+      <path d="M66 55 v6 M63 58 h6" stroke="#0071E3" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+    <p class="text-[18px] font-semibold mt-6" style="color:var(--ink-1);">面完一场，回来记一笔</p>
+    <p class="text-[14px] mt-2 max-w-sm" style="color:var(--ink-2);">把面试官真问的问题记下来，勾选「这题押中了没」——押题准不准，用命中率说话。</p>
+    <div class="flex items-center gap-3 mt-6">
+      <button id="btnReviewEmptyAdd" type="button" class="flex items-center gap-1.5 px-5 py-2.5 rounded-full text-[14px] font-medium text-white trl"
+        style="background-color:var(--accent);background-image:linear-gradient(135deg,#0071E3,#0A84FF);box-shadow:0 4px 14px rgba(0,113,227,0.35);height:40px;">＋ 新增复盘</button>
+      <button id="btnReviewEmptyBoard" type="button" class="textlink" type="button">去求职看板 ›</button>
+    </div>
+  </section>`;
+}
+function reviewHintCardHTML(){
+  const qs = lastInterviewQuestions().slice(0, 3);
+  if(!qs.length) return '';
+  return `
+  <section class="rl-card p-5 sm:p-6">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <p class="eyebrow">最近一次押题 · Q1-Q3</p>
+      <button id="btnHintToReview" type="button" class="textlink" title="把这三题带进一条新复盘逐题勾选">带去复盘 ›</button>
+    </div>
+    <div class="mt-3 space-y-1.5">
+      ${qs.map((q, i) => `
+      <div class="flex items-start gap-2 py-1">
+        <span class="text-[13px] font-semibold tabular shrink-0 mt-0.5" style="color:var(--accent);">Q${i + 1}</span>
+        <p class="text-[13px] leading-relaxed min-w-0" style="color:var(--ink-1);">${esc(q.q)}</p>
+      </div>`).join('')}
+    </div>
+    <p class="text-[12px] mt-3" style="color:var(--ink-3);">面完回来逐题勾一下：<span class="font-semibold" style="color:#248A3D;">押中了</span> / <span class="font-semibold" style="color:var(--ink-3);">没押中</span></p>
+  </section>`;
+}
+function renderReviewHint(){ $('reviewHintCard').innerHTML = reviewHintCardHTML(); }
+function renderReview(){
+  const list = Store.get(REVIEW_KEY) || [];
+  $('reviewStats').innerHTML = reviewStatsHTML(list);
+  $('reviewList').innerHTML = list.length ? list.map(reviewCardHTML).join('') : reviewEmptyHTML();
+  renderReviewHint();
+}
+// 事件绑定（P11）
+$('tabReview').addEventListener('click', tabReview);
+$('tabReviewMobile').addEventListener('click', tabReview);
+$('btnReviewBack').addEventListener('click', tabAnalyze);
+$('btnAddReview').addEventListener('click', () => openReviewModal(null));
+$('btnReviewHintStart').addEventListener('click', () => { openReviewModal(null); loadHintQuestions(); });
+$('btnReviewFillHint').addEventListener('click', loadHintQuestions);
+$('btnReviewCancel').addEventListener('click', closeReviewModal);
+reviewMask.addEventListener('click', closeReviewModal);
+$('btnReviewSave').addEventListener('click', saveReview);
+$('btnReviewAddQ').addEventListener('click', () => {
+  $('reviewQList').insertAdjacentHTML('beforeend', reviewRowHTML({}));
+  const row = $('reviewQList').lastElementChild;
+  paintStars(row.querySelector('[data-stars]'), 0, row.querySelector('.q-selfval'));
+});
+$('reviewList').addEventListener('click', (e) => {
+  const del = e.target.closest('.review-del');
+  if(del){
+    const list = Store.get(REVIEW_KEY) || [];
+    list.splice(+del.dataset.idx, 1);
+    Store.set(REVIEW_KEY, list);
+    renderReview(); showToast('已删除复盘');
+    return;
+  }
+  const ed = e.target.closest('.review-edit');
+  if(ed){
+    const list = Store.get(REVIEW_KEY) || [];
+    openReviewModal(list[+ed.dataset.idx]); return;
+  }
+  if(e.target.closest('#btnReviewEmptyAdd')){ openReviewModal(null); return; }
+  if(e.target.closest('#btnReviewEmptyBoard')){ showView('board'); }
+});
+$('reviewHintCard').addEventListener('click', (e) => {
+  if(e.target.closest('#btnHintToReview')){ openReviewModal(null); loadHintQuestions(); }
+});
+// 弹层内：问题行交互（命中切换 / 自评星级 / 删除行）
+$('reviewQList').addEventListener('click', (e) => {
+  const row = e.target.closest('.review-qrow');
+  if(!row) return;
+  if(e.target.closest('.q-del')){ row.remove(); return; }
+  const hit = e.target.closest('.q-hit');
+  if(hit){ toggleHit(hit); return; }
+  const sb = e.target.closest('.star-btn');
+  if(sb) paintStars(row.querySelector('[data-stars]'), +sb.dataset.sval, row.querySelector('.q-selfval'));
+});
+$('reviewOverallStars').addEventListener('click', (e) => {
+  const sb = e.target.closest('.star-btn');
+  if(sb) paintStars($('reviewOverallStars'), +sb.dataset.sval, $('reviewOverallVal'));
 });
 // 初始进入：分析视图激活
 tabAnalyze();
