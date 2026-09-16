@@ -170,6 +170,16 @@
       <div class="text-[17px] font-semibold tracking-tight" style="color:var(--ink-1);">简历透镜 <span class="font-normal" style="color:var(--ink-3);">ResumeLens</span></div>
     </div>
     <div class="flex items-center gap-1">
+      <!-- P10 顶栏 tab：简历分析 / 求职看板（桌面端） -->
+      <nav class="items-center p-1 rounded-full hidden sm:flex" id="topTabs" aria-label="功能切换"
+        style="background:rgba(0,0,0,0.045);">
+        <button id="tabAnalyze" class="tab-btn px-3.5 py-1.5 text-[13px] rounded-full trl" type="button"
+          style="color:var(--ink-1);background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.12);font-weight:500;">简历分析</button>
+        <button id="tabBoard" class="tab-btn px-3.5 py-1.5 text-[13px] rounded-full trl" type="button"
+          style="color:var(--ink-2);">求职看板</button>
+      </nav>
+      <!-- 移动端快捷入口 -->
+      <button id="tabBoardMobile" class="textlink sm:hidden" type="button">看板</button>
       <button id="btnHistory" class="textlink" type="button">历史记录</button>
       <button id="btnAbout" class="textlink" type="button">关于</button>
     </div>
@@ -177,6 +187,9 @@
 </header>
 
 <main class="max-w-5xl mx-auto px-6 py-8">
+
+  <!-- P10 视图容器：分析视图 -->
+  <div id="viewAnalyze">
 
   <!-- 输入卡片 -->
   <section class="rl-card p-5 sm:p-8 trl" id="inputCard">
@@ -231,6 +244,34 @@
   <!-- 报告区占位（P3 起渲染内容） -->
   <section id="reportArea" class="mt-8"></section>
 
+  </div><!-- /viewAnalyze -->
+
+  <!-- P10 求职看板视图 -->
+  <div id="viewBoard" class="hidden">
+    <!-- 看板头部：统计 + 新增 + 与 JD 联动 -->
+    <section class="rl-card p-5 sm:p-8">
+      <div class="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p class="eyebrow">求职看板</p>
+          <h1 class="text-[24px] sm:text-[28px] font-semibold tracking-tight leading-tight mt-1" style="color:var(--ink-1);">投递与跟进，一处掌握</h1>
+          <p class="text-[14px] mt-2" style="color:var(--ink-2);">跟踪投递状态、面试进度与结果，数据仅存本机浏览器。</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button id="btnBoardBack" class="textlink sm:hidden" type="button">‹ 返回分析</button>
+          <button id="btnTrackFromJd" class="textlink" type="button" title="将当前 JD 保存为一条投递记录（需先复制 JD 后使用）">从当前 JD 记录</button>
+          <button id="btnAddTrack" class="flex items-center gap-1.5 px-5 py-2.5 rounded-full text-[14px] font-medium text-white trl"
+            style="background-color:var(--accent);background-image:linear-gradient(135deg,#0071E3,#0A84FF);box-shadow:0 4px 14px rgba(0,113,227,0.35);height:40px;"
+            onmouseover="this.style.filter='brightness(1.06)'" onmouseout="this.style.filter=''"
+            onmousedown="this.style.transform='scale(.98)'" onmouseup="this.style.transform='scale(1)'">＋ 新增投递</button>
+        </div>
+      </div>
+      <!-- 统计卡片 -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6" id="trackStats"></div>
+    </section>
+    <!-- 记录列表 -->
+    <section class="mt-6" id="trackList"></section>
+  </div><!-- /viewBoard -->
+
 </main>
 
 <!-- 无障碍播报（复制结果等） -->
@@ -259,6 +300,38 @@
     粘贴 JD 和简历，看匹配度、红旗与面试押题。支持 PDF / Word / Excel 简历导入。纯前端算法 · 数据不出浏览器 · 得分基于文本算法，仅供参考，不代表真实 ATS/HR 判断 · 简历透镜
   </p>
   <button id="btnCloseAbout" type="button" class="btn-secondary mt-6" aria-label="关闭关于弹窗">知道了</button>
+</div>
+
+<!-- P10 投递编辑弹层 -->
+<div id="trackMask" class="drawer-mask" aria-hidden="true"></div>
+<div id="trackModal" class="modal" role="dialog" aria-modal="true" aria-label="新增 / 编辑投递" aria-hidden="true">
+  <p id="trackModalTitle" class="text-[17px] font-semibold" style="color:var(--ink-1);">新增投递</p>
+  <div class="mt-4 space-y-3">
+    <div>
+      <label class="eyebrow" for="trackCompany">公司名称</label>
+      <input id="trackCompany" type="text" class="border border-black/10 rounded-xl px-3 py-2.5 w-full text-[14px] outline-none focus:border-[color:var(--accent)] focus:shadow-[0_0_0_4px_rgba(0,113,227,0.12)] transition" style="color:var(--ink-1);background:#fff;" placeholder="例：字节跳动">
+    </div>
+    <div>
+      <label class="eyebrow" for="trackRole">岗位名称</label>
+      <input id="trackRole" type="text" class="border border-black/10 rounded-xl px-3 py-2.5 w-full text-[14px] outline-none focus:border-[color:var(--accent)] focus:shadow-[0_0_0_4px_rgba(0,113,227,0.12)] transition" style="color:var(--ink-1);background:#fff;" placeholder="例：高级产品经理">
+    </div>
+    <div>
+      <label class="eyebrow" for="trackStatus">当前状态</label>
+      <div id="trackStatusPicker" class="flex flex-wrap gap-2 mt-1.5" role="group" aria-label="选择状态"></div>
+    </div>
+    <div>
+      <label class="eyebrow" for="trackDate">投递日期</label>
+      <input id="trackDate" type="date" class="border border-black/10 rounded-xl px-3 py-2.5 w-full text-[14px] outline-none focus:border-[color:var(--accent)] focus:shadow-[0_0_0_4px_rgba(0,113,227,0.12)] transition" style="color:var(--ink-1);background:#fff;">
+    </div>
+    <div>
+      <label class="eyebrow" for="trackNote">备注（可选）</label>
+      <textarea id="trackNote" rows="2" class="border border-black/10 rounded-xl px-3 py-2.5 w-full text-[14px] outline-none focus:border-[color:var(--accent)] focus:shadow-[0_0_0_4px_rgba(0,113,227,0.12)] transition resize-none" style="color:var(--ink-1);background:#fff;" placeholder="面试时间、进度、无 job link 的参考信息…"></textarea>
+    </div>
+  </div>
+  <div class="flex gap-2 mt-6">
+    <button id="btnTrackSave" type="button" class="btn-primary flex-1">保存</button>
+    <button id="btnTrackCancel" type="button" class="btn-secondary flex-1">取消</button>
+  </div>
 </div>
 
 <script>
@@ -1428,6 +1501,195 @@ $('btnCloseAbout').addEventListener('click', closeAbout);
 aboutMask.addEventListener('click', closeAbout);
 document.addEventListener('keydown', (e) => { if(e.key === 'Escape' && aboutModal.classList.contains('open')) closeAbout(); });
 reportArea.innerHTML = placeholderHTML(); // 初始空态
+
+/* ==========================================================
+   P10 求职看板（§3.4·v4）：投递跟踪 + 状态流转 + 本地持久化
+   ========================================================== */
+const TRACK_KEY = 'resumeLensTracker';
+const TRACK_STATUS = [
+  { id:'fav',     label:'已收藏', color:'#FF9500', bg:'rgba(255,149,0,0.12)' },
+  { id:'applied', label:'已投递', color:'#86868B', bg:'rgba(0,0,0,0.06)' },
+  { id:'interview',label:'面试中', color:'#0066CC', bg:'rgba(0,122,255,0.10)' },
+  { id:'offer',   label:'已 OFFER', color:'#248A3D', bg:'rgba(52,199,89,0.12)' },
+  { id:'reject',  label:'已婉拒', color:'#D70015', bg:'rgba(255,59,48,0.08)' }
+];
+const trackModal = $('trackModal'), trackMask = $('trackMask');
+let trackEditingId = null; // null = 新增
+
+function trackEmptyHTML(){
+  return `
+  <section class="rl-card p-10 trl flex flex-col items-center text-center">
+    <svg width="88" height="76" viewBox="0 0 88 76" fill="none" aria-hidden="true">
+      <rect x="6" y="12" width="62" height="52" rx="9" stroke="#C7C7CC" stroke-width="2"/>
+      <path d="M6 22 h62" stroke="#C7C7CC" stroke-width="2"/>
+      <rect x="78" y="32" width="8" height="8" rx="2" fill="#E8E8ED"/>
+      <rect x="78" y="46" width="8" height="8" rx="2" fill="#E8E8ED"/>
+      <path d="M16 40 h20 M16 48 h32" stroke="#D8D8DE" stroke-width="2" stroke-linecap="round"/>
+      <circle cx="62" cy="52" r="11" stroke="#0071E3" stroke-width="2"/>
+      <path d="M62 47 v10 M57 52 h10" stroke="#0071E3" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+    <p class="text-[18px] font-semibold mt-6" style="color:var(--ink-1);">还没有投递记录</p>
+    <p class="text-[14px] mt-2 max-w-sm" style="color:var(--ink-2);">分析完简历后，把每个心动岗位记一笔：收藏、投递、面试、OFFER，进度尽在掌握。</p>
+    <button id="btnTrackEmptyAdd" type="button" class="mt-6 flex items-center gap-1.5 px-5 py-2.5 rounded-full text-[14px] font-medium text-white trl"
+      style="background-color:var(--accent);background-image:linear-gradient(135deg,#0071E3,#0A84FF);box-shadow:0 4px 14px rgba(0,113,227,0.35);height:40px;">＋ 添加第一笔投递</button>
+  </section>`;
+}
+function trackListHTML(list){
+  const cards = list.map((t, i) => {
+    const st = TRACK_STATUS.find(s => s.id === t.status) || TRACK_STATUS[1];
+    const dateStr = t.date || '';
+    return `
+    <article class="rl-card p-5 sm:p-6 flex items-start justify-between gap-4 rise-in" style="--i:${Math.min(i, 8)}" data-idx="${i}">
+      <div class="min-w-0">
+        <div class="flex flex-wrap items-center gap-2">
+          <h3 class="text-[16px] font-semibold truncate" style="color:var(--ink-1);">${esc(t.company)}</h3>
+          <span class="text-[13px]" style="color:var(--ink-3);">${esc(t.role || '')}</span>
+        </div>
+        <p class="text-[12px] mt-1.5 tabular" style="color:var(--ink-3);">${dateStr ? '投递于 ' + dateStr : '未填写日期'}</p>
+        ${t.note ? `<p class="text-[13px] mt-2 leading-relaxed" style="color:var(--ink-2);">${esc(t.note)}</p>` : ''}
+      </div>
+      <div class="flex flex-col items-end gap-2 shrink-0">
+        <span class="px-2.5 py-1 rounded-full text-[12px] font-semibold" style="color:${st.color};background:${st.bg};">${st.label}</span>
+        <div class="flex items-center gap-1.5">
+          <button type="button" class="textlink track-edit" data-idx="${i}" aria-label="编辑 ${esc(t.company)}">编辑</button>
+          <button type="button" class="textlink track-del" data-idx="${i}" style="color:var(--red);" aria-label="删除 ${esc(t.company)}">删除</button>
+        </div>
+      </div>
+    </article>`;
+  }).join('');
+  return `<div class="space-y-3">${cards}</div>`;
+}
+function renderTrackStats(list){
+  const st = el => $('trackStats');
+  const total = list.length;
+  const interviewN = list.filter(t => t.status === 'interview').length;
+  const offerN = list.filter(t => t.status === 'offer').length;
+  const appliedN = list.filter(t => t.status === 'applied').length;
+  const cell = (num, label, color) => `
+    <div class="rounded-[14px] p-4 text-center" style="background:linear-gradient(180deg,#FBFBFD,#F5F5F7);">
+      <p class="tabular text-[26px] font-semibold leading-none" style="color:${color};">${num}</p>
+      <p class="eyebrow mt-2">${label}</p>
+    </div>`;
+  st().innerHTML = cell(total, '总投递', 'var(--ink-1)') + cell(appliedN, '已投递', 'var(--ink-2)')
+    + cell(interviewN, '面试中', '#0066CC') + cell(offerN, '已 OFFER', '#248A3D');
+}
+function renderTrack(){
+  const list = Store.get(TRACK_KEY) || [];
+  renderTrackStats(list);
+  $('trackList').innerHTML = list.length ? trackListHTML(list) : trackEmptyHTML();
+}
+function trackStatusHTML(sel){
+  return TRACK_STATUS.map(s =>
+    `<button type="button" class="status-opt px-3 py-1.5 rounded-full text-[13px] font-medium trl border"
+      data-st="${s.id}" ${s.id === sel ? 'data-active="1"' : ''}
+      style="color:${s.color};background:${s.bg};border-color:transparent;${s.id === sel ? 'box-shadow:0 0 0 2px ' + s.bg + ';border-color:' + s.color + ';' : 'opacity:.55;'}">${s.label}</button>`
+  ).join('');
+}
+function openTrackModal(rec){
+  trackEditingId = rec ? rec.id : null;
+  $('trackModalTitle').textContent = rec ? '编辑投递' : '新增投递';
+  $('trackCompany').value = rec ? (rec.company || '') : '';
+  $('trackRole').value = rec ? (rec.role || '') : '';
+  $('trackNote').value = rec ? (rec.note || '') : '';
+  $('trackDate').value = rec ? (rec.date || new Date().toISOString().slice(0, 10)) : new Date().toISOString().slice(0, 10);
+  $('trackStatusPicker').innerHTML = trackStatusHTML(rec ? rec.status : 'fav');
+  trackModal.classList.add('open'); trackMask.classList.add('open');
+  trackModal.setAttribute('aria-hidden', 'false'); trackMask.setAttribute('aria-hidden', 'false');
+  $('trackCompany').focus();
+}
+function closeTrackModal(){
+  trackModal.classList.remove('open'); trackMask.classList.remove('open');
+  trackModal.setAttribute('aria-hidden', 'true'); trackMask.setAttribute('aria-hidden', 'true');
+}
+function saveTrack(){
+  const company = $('trackCompany').value.trim();
+  const role = $('trackRole').value.trim();
+  if(!company){ $('trackCompany').focus(); showToast('请填写公司名称'); return; }
+  const picked = $('trackStatusPicker').querySelector('button[data-active="1"]');
+  const list = Store.get(TRACK_KEY) || [];
+  const rec = {
+    id: trackEditingId || ('t' + Date.now()),
+    company, role,
+    status: picked ? picked.dataset.st : 'fav',
+    date: $('trackDate').value || new Date().toISOString().slice(0, 10),
+    note: $('trackNote').value.trim()
+  };
+  if(trackEditingId){ const i = list.findIndex(x => x.id === trackEditingId); if(i >= 0) list[i] = rec; }
+  else list.unshift(rec);
+  Store.set(TRACK_KEY, list);
+  closeTrackModal();
+  renderTrack();
+  showToast('已保存');
+}
+function trackFromJd(){
+  const jd = jdInput.value.trim();
+  if(!jd){ showToast('请先在「简历分析」粘贴 JD'); tabBoard(); return; }
+  // 从 JD 粗取岗位名：优先"职位名称：XX"，再匹配常见职位词
+  const titleMatch = jd.match(/职位(?:名称|title)?[:：]\s*([^\n，。,。]{1,16})/i);
+  const kwMatch = jd.match(/((?:资深|高级|初级|中级|助理|实习生)?.{0,6}?(?:产品经理|产品运营|用户运营|增长|运营|Java|前端|后端|测试|运维|算法|数据分析师|数据分析|设计师|HRBP|市场经理|销售经理))/);
+  const firstLine = jd.split('\n').map(s => s.trim()).find(s => /[\u4e00-\u9fa5]/.test(s) && s.length >= 4 && s.length <= 24);
+  openTrackModal({ company:'', role: (titleMatch && titleMatch[1]) || (kwMatch && kwMatch[1]) || firstLine || '', status:'fav', date:new Date().toISOString().slice(0, 10), note:'' });
+}
+// 视图切换
+function tabAnalyze(){ $('viewAnalyze').classList.remove('hidden'); $('viewBoard').classList.add('hidden'); setTabState(true); }
+function tabBoard(){
+  $('viewAnalyze').classList.add('hidden'); $('viewBoard').classList.remove('hidden');
+  setTabState(false);
+  renderTrack();
+}
+function setTabState(analyzeActive){
+  const a = $('tabAnalyze'), b = $('tabBoard');
+  a.style.background = analyzeActive ? '#fff' : 'transparent';
+  a.style.color = analyzeActive ? 'var(--ink-1)' : 'var(--ink-2)';
+  a.style.boxShadow = analyzeActive ? '0 1px 3px rgba(0,0,0,0.12)' : 'none';
+  a.style.fontWeight = analyzeActive ? '500' : '400';
+  b.style.background = analyzeActive ? 'transparent' : '#fff';
+  b.style.color = analyzeActive ? 'var(--ink-2)' : 'var(--ink-1)';
+  b.style.boxShadow = analyzeActive ? 'none' : '0 1px 3px rgba(0,0,0,0.12)';
+  b.style.fontWeight = analyzeActive ? '400' : '500';
+  a.setAttribute('aria-selected', analyzeActive);
+  b.setAttribute('aria-selected', !analyzeActive);
+}
+// 事件绑定
+$('tabAnalyze').addEventListener('click', tabAnalyze);
+$('tabBoard').addEventListener('click', tabBoard);
+$('tabBoardMobile').addEventListener('click', tabBoard);
+$('btnBoardBack').addEventListener('click', tabAnalyze);
+$('btnAddTrack').addEventListener('click', () => openTrackModal(null));
+$('btnTrackCancel').addEventListener('click', closeTrackModal);
+trackMask.addEventListener('click', closeTrackModal);
+$('btnTrackSave').addEventListener('click', saveTrack);
+$('btnTrackFromJd').addEventListener('click', trackFromJd);
+$('trackList').addEventListener('click', (e) => {
+  const del = e.target.closest('.track-del');
+  if(del){
+    const list = Store.get(TRACK_KEY) || [];
+    list.splice(+del.dataset.idx, 1);
+    Store.set(TRACK_KEY, list);
+    renderTrack(); showToast('已删除');
+    return;
+  }
+  const ed = e.target.closest('.track-edit');
+  if(ed){
+    const list = Store.get(TRACK_KEY) || [];
+    openTrackModal(list[+ed.dataset.idx]); return;
+  }
+  if(e.target.closest('#btnTrackEmptyAdd')){ openTrackModal(null); }
+});
+// 弹层内状态选择
+$('trackStatusPicker').addEventListener('click', (e) => {
+  const btn = e.target.closest('.status-opt');
+  if(!btn) return;
+  document.querySelectorAll('#trackStatusPicker .status-opt').forEach(b => {
+    b.style.boxShadow = 'none'; b.style.borderColor = 'transparent'; b.style.opacity = '.55';
+    b.removeAttribute('data-active');
+  });
+  btn.style.boxShadow = '0 0 0 2px rgba(0,113,227,0.18)';
+  btn.style.borderColor = btn.style.color; btn.style.opacity = '1';
+  btn.setAttribute('data-active', '1');
+});
+// 初始进入：分析视图激活
+tabAnalyze();
 </script>
 </body>
 </html>
