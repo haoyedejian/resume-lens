@@ -179,6 +179,8 @@
           style="color:var(--ink-2);">求职看板</button>
         <button id="tabReview" class="tab-btn px-3.5 py-1.5 text-[13px] rounded-full trl" type="button"
           style="color:var(--ink-2);">面试复盘</button>
+        <button id="tabOffer" class="tab-btn px-3.5 py-1.5 text-[13px] rounded-full trl" type="button"
+          style="color:var(--ink-2);">Offer 抉择</button>
       </nav>
       <!-- 移动端快捷入口 -->
       <button id="tabBoardMobile" class="textlink sm:hidden" type="button">看板</button>
@@ -262,6 +264,7 @@
         <div class="flex items-center gap-2">
           <button id="btnBoardBack" class="textlink sm:hidden" type="button">‹ 返回分析</button>
           <button id="btnTrackFromJd" class="textlink" type="button" title="将当前 JD 保存为一条投递记录（需先复制 JD 后使用）">从当前 JD 记录</button>
+          <button id="btnCompareOffer" class="textlink" type="button" title="查看已 OFFER 记录并对比打分">offer 对比</button>
           <button id="btnAddTrack" class="flex items-center gap-1.5 px-5 py-2.5 rounded-full text-[14px] font-medium text-white trl"
             style="background-color:var(--accent);background-image:linear-gradient(135deg,#0071E3,#0A84FF);box-shadow:0 4px 14px rgba(0,113,227,0.35);height:40px;"
             onmouseover="this.style.filter='brightness(1.06)'" onmouseout="this.style.filter=''"
@@ -301,6 +304,40 @@
     <!-- 复盘列表 -->
     <section class="mt-6" id="reviewList"></section>
   </div><!-- /viewReview -->
+
+  <!-- P12 Offer 抉择视图 -->
+  <div id="viewOffer" class="hidden">
+    <section class="rl-card p-5 sm:p-8">
+      <div class="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p class="eyebrow">Offer 抉择</p>
+          <h1 class="text-[24px] sm:text-[28px] font-semibold tracking-tight leading-tight mt-1" style="color:var(--ink-1);">几个 Offer，对比着选</h1>
+          <p class="text-[14px] mt-2" style="color:var(--ink-2);">给每个 Offer 的薪资 / 成长 / 通勤 / 团队 / 意愿打分，调一调权重，看谁更值得去。纯本地计算。</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button id="btnOfferBack" class="textlink sm:hidden" type="button">‹ 返回</button>
+        </div>
+      </div>
+      <!-- 候选列表（自动汇总已 OFFER 记录） -->
+      <div class="flex items-baseline justify-between flex-wrap gap-2 mt-6">
+        <h2 class="eyebrow">候选 Offer（来自求职看板「已 OFFER」记录）</h2>
+        <button id="btnOfferJumpBoard" class="textlink" type="button">去求职看板 ›</button>
+      </div>
+      <div id="offerCandidates" class="mt-3"></div>
+      <!-- 权重调节 -->
+      <div class="mt-8">
+        <div class="flex items-baseline justify-between flex-wrap gap-2">
+          <h2 class="eyebrow">对比权重（实时归一化，拖动即时重算）</h2>
+          <button id="btnWeightsReset" class="textlink" type="button">重置默认</button>
+        </div>
+        <div id="offerWeights" class="mt-3 space-y-3"></div>
+      </div>
+    </section>
+    <!-- 对比矩阵 -->
+    <section class="mt-6" id="offerMatrix"></section>
+    <!-- 空态 / 提示 -->
+    <section id="offerEmpty"></section>
+  </div><!-- /viewOffer -->
 
 </main>
 
@@ -1624,6 +1661,7 @@ function trackListHTML(list){
       <div class="flex flex-col items-end gap-2 shrink-0">
         <span class="px-2.5 py-1 rounded-full text-[12px] font-semibold" style="color:${st.color};background:${st.bg};">${st.label}</span>
         <div class="flex items-center gap-1.5">
+          ${t.status === 'offer' ? `<button type="button" class="textlink track-compare" data-idx="${i}" aria-label="对比 ${esc(t.company)}">去对比</button>` : ''}
           <button type="button" class="textlink track-edit" data-idx="${i}" aria-label="编辑 ${esc(t.company)}">编辑</button>
           <button type="button" class="textlink track-del" data-idx="${i}" style="color:var(--red);" aria-label="删除 ${esc(t.company)}">删除</button>
         </div>
@@ -1703,18 +1741,20 @@ function trackFromJd(){
   const firstLine = jd.split('\n').map(s => s.trim()).find(s => /[\u4e00-\u9fa5]/.test(s) && s.length >= 4 && s.length <= 24);
   openTrackModal({ company:'', role: (titleMatch && titleMatch[1]) || (kwMatch && kwMatch[1]) || firstLine || '', status:'fav', date:new Date().toISOString().slice(0, 10), note:'' });
 }
-// 视图切换（三视图：简历分析 / 求职看板 / 面试复盘）
+// 视图切换（四视图：简历分析 / 求职看板 / 面试复盘 / Offer 抉择）
 function tabAnalyze(){ showView('analyze'); }
 function tabBoard(){ showView('board'); renderTrack(); }
 function tabReview(){ showView('review'); renderReview(); }
+function tabOffer(){ showView('offer'); renderOffer(); }
 function showView(v){
   $('viewAnalyze').classList.toggle('hidden', v !== 'analyze');
   $('viewBoard').classList.toggle('hidden', v !== 'board');
   $('viewReview').classList.toggle('hidden', v !== 'review');
+  $('viewOffer').classList.toggle('hidden', v !== 'offer');
   setTabState(v);
 }
 function setTabState(active){
-  const map = [['tabAnalyze','analyze'],['tabBoard','board'],['tabReview','review']];
+  const map = [['tabAnalyze','analyze'],['tabBoard','board'],['tabReview','review'],['tabOffer','offer']];
   map.forEach(([id, key]) => {
     const el = $(id);
     const on = active === key;
@@ -1736,6 +1776,14 @@ trackMask.addEventListener('click', closeTrackModal);
 $('btnTrackSave').addEventListener('click', saveTrack);
 $('btnTrackFromJd').addEventListener('click', trackFromJd);
 $('trackList').addEventListener('click', (e) => {
+  const cmp = e.target.closest('.track-compare');
+  if(cmp){
+    const list = Store.get(TRACK_KEY) || [];
+    const rec = list[+cmp.dataset.idx];
+    if(rec) offerSpotId = rec.id;
+    tabOffer();
+    return;
+  }
   const del = e.target.closest('.track-del');
   if(del){
     const list = Store.get(TRACK_KEY) || [];
@@ -2066,6 +2114,281 @@ $('reviewQList').addEventListener('click', (e) => {
 $('reviewOverallStars').addEventListener('click', (e) => {
   const sb = e.target.closest('.star-btn');
   if(sb) paintStars($('reviewOverallStars'), +sb.dataset.sval, $('reviewOverallVal'));
+});
+
+/* ==========================================================
+   P12 Offer 抉择（§3.6·v6）：候选打分层 + 加权对比矩阵
+   ========================================================== */
+const OFFER_KEY = 'resumeLensOfferScores';
+const OFFER_W_KEY = 'resumeLensOfferWeights';
+const OFFER_DIMS = [
+  { key: 'pay',     label: '薪资待遇', hint: '月薪/年薪、年终奖、补贴福利' },
+  { key: 'growth',  label: '成长空间', hint: '业务前景、职级晋升、技能积累' },
+  { key: 'commute', label: '通勤友好', hint: '通勤时长、加班强度、办公环境' },
+  { key: 'team',    label: '团队氛围', hint: '直属 Leader、协作风格、团队规模' },
+  { key: 'vibe',    label: '主观意愿', hint: '做久了腻不腻、心里更想去哪家' }
+];
+const OFFER_W_DEFAULT = { pay: 30, growth: 25, commute: 15, team: 15, vibe: 15 };
+let offerSpotId = null; // 「去对比」高亮的目标 trackId
+
+function offerWeightsAll(){
+  const w = Object.assign({}, OFFER_W_DEFAULT, Store.get(OFFER_W_KEY) || {});
+  const sum = OFFER_DIMS.reduce((a, d) => a + (Number(w[d.key]) || 0), 0) || 1;
+  return { w, sum };
+}
+function offerScores(){ return Store.get(OFFER_KEY) || []; }
+function offerScoreById(id){ return offerScores().find(s => s.trackId === id) || null; }
+function offerStarsMarkup(v){
+  return Array.from({ length: 5 }, (_, i) =>
+    `<button type="button" class="star-btn tabular text-[15px] leading-none trl" data-sval="${i + 1}"
+      style="color:${v && i < v ? '#FF9500' : '#D8D8DE'};" aria-label="给 ${i + 1} 分">${v && i < v ? '★' : '☆'}</button>`).join('');
+}
+function offerCandidates(){
+  const tracks = Store.get(TRACK_KEY) || [];
+  const list = tracks.filter(t => t.status === 'offer');
+  const ids = new Set(list.map(t => t.id));
+  // 清理孤儿分：看板记录被删除或状态不再是 offer 时，对应打分一并清除
+  const stale = offerScores().filter(s => !ids.has(s.trackId));
+  if(stale.length) Store.set(OFFER_KEY, offerScores().filter(s => ids.has(s.trackId)));
+  return list.map((t, i) => ({ t, s: offerScoreById(t.id), i }));
+}
+function offerCandidateHTML(t, s, i){
+  const isSpot = offerSpotId === t.id;
+  return `
+  <article class="rl-card p-5 sm:p-6 rise-in trl offer-can" data-ti="${i}" data-tid="${esc(t.id)}"
+    style="--i:${Math.min(i, 8)};${isSpot ? 'box-shadow:0 0 0 2px var(--accent), 0 8px 20px rgba(0,113,227,0.15);' : ''}">
+    <div class="flex items-center gap-2 min-w-0">
+      <input type="checkbox" class="offer-include" checked aria-label="纳入对比 ${esc(t.company)}">
+      <div class="min-w-0">
+        <h3 class="text-[16px] font-semibold truncate" style="color:var(--ink-1);">${esc(t.company)}</h3>
+        ${t.role ? `<p class="text-[12px] mt-0.5 truncate" style="color:var(--ink-3);">${esc(t.role)}</p>` : ''}
+      </div>
+      <span class="ml-auto shrink-0 px-2.5 py-1 rounded-full text-[12px] font-semibold whitespace-nowrap"
+        style="color:#248A3D;background:rgba(52,199,89,0.12);">已 OFFER</span>
+    </div>
+    <div class="mt-4 space-y-2.5">
+      ${OFFER_DIMS.map(d => {
+        const v = (s && s.dims && s.dims[d.key]) ? +s.dims[d.key] : 0;
+        return `
+        <div class="flex items-center gap-2">
+          <span class="shrink-0 w-[4.4rem] text-[12px] font-medium" style="color:var(--ink-2);" title="${d.hint}">${d.label}</span>
+          <div class="offer-stars flex gap-1" data-dim="${d.key}" data-val="${v}" role="group" aria-label="${t.company} ${d.label}打分">
+            ${offerStarsMarkup(v)}
+          </div>
+          <span class="offer-dv text-[12px] tabular shrink-0" style="color:${v ? '#FF9500' : 'var(--ink-3)'};">${v ? v + ' 分' : '待打分'}</span>
+        </div>`;
+      }).join('')}
+    </div>
+    <div class="flex flex-col sm:flex-row gap-2 mt-4">
+      <input type="text" class="offer-salary flex-1 min-w-0 border border-black/10 rounded-xl px-3 py-2 text-[13px] outline-none focus:border-[color:var(--accent)] focus:shadow-[0_0_0_4px_rgba(0,113,227,0.12)] transition" style="color:var(--ink-1);background:#fff;" placeholder="薪资：如 25k×15、40w（可选）" value="${esc((s && s.salary) || '')}">
+      <input type="text" class="offer-note flex-1 min-w-0 border border-black/10 rounded-xl px-3 py-2 text-[13px] outline-none focus:border-[color:var(--accent)] focus:shadow-[0_0_0_4px_rgba(0,113,227,0.12)] transition" style="color:var(--ink-1);background:#fff;" placeholder="备注：如 年终一月、6 点下班（可选）" value="${esc((s && s.note) || '')}">
+    </div>
+  </article>`;
+}
+function offerEmptyHTML(){
+  return `
+  <section class="rl-card p-10 trl flex flex-col items-center text-center">
+    <svg width="88" height="76" viewBox="0 0 88 76" fill="none" aria-hidden="true">
+      <rect x="10" y="14" width="48" height="34" rx="8" stroke="#C7C7CC" stroke-width="2"/>
+      <path d="M22 26 h24 M22 34 h24 M22 42 h16" stroke="#D8D8DE" stroke-width="2" stroke-linecap="round"/>
+      <circle cx="70" cy="34" r="12" stroke="#0071E3" stroke-width="2"/>
+      <path d="M70 29 v10 M65 34 h10" stroke="#0071E3" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+    <p class="text-[18px] font-semibold mt-6" style="color:var(--ink-1);">还没收到 Offer？不慌</p>
+    <p class="text-[14px] mt-2 max-w-sm" style="color:var(--ink-2);">把求职看板里状态为「已 OFFER」的记录带到这里，给每家的薪资 / 成长 / 通勤 / 团队 / 意愿打个分，调一调权重，选最值得去的。</p>
+    <button id="btnOfferEmptyGo" type="button" class="mt-6 flex items-center gap-1.5 px-5 py-2.5 rounded-full text-[14px] font-medium text-white trl"
+      style="background-color:var(--accent);background-image:linear-gradient(135deg,#0071E3,#0A84FF);box-shadow:0 4px 14px rgba(0,113,227,0.35);height:40px;">去求职看板标记 Offer ›</button>
+  </section>`;
+}
+function offerWeightsHTML(){
+  const { w, sum } = offerWeightsAll();
+  return OFFER_DIMS.map(d => {
+    const v = Number(w[d.key]) || 0;
+    const pct = Math.round(v / sum * 100);
+    return `
+    <div>
+      <div class="flex items-center justify-between">
+        <label class="text-[13px] font-medium" style="color:var(--ink-1);" for="w-${d.key}">${d.label}</label>
+        <span class="text-[12px] tabular font-semibold" data-wval style="color:var(--accent);">${pct}%</span>
+      </div>
+      <input id="w-${d.key}" type="range" class="offer-wslider w-full mt-1" style="accent-color:#0071E3;" data-dim="${d.key}" min="0" max="100" step="5" value="${v}" aria-label="${d.label} 权重">
+    </div>`;
+  }).join('');
+}
+function offerRefreshWvals(){
+  const { w, sum } = offerWeightsAll();
+  document.querySelectorAll('.offer-wslider').forEach(sl => {
+    const pct = Math.round((Number(sl.value) || 0) / sum * 100);
+    const span = sl.closest('div').querySelector('[data-wval]');
+    if(span) span.textContent = pct + '%';
+  });
+}
+function offerMatrixInputs(){
+  return [...document.querySelectorAll('#offerCandidates .offer-can')].map(el => {
+    const dims = {};
+    el.querySelectorAll('.offer-stars').forEach(wrap => { dims[wrap.dataset.dim] = +wrap.dataset.val || 0; });
+    return {
+      ti: +el.dataset.ti, tid: el.dataset.tid,
+      company: (el.querySelector('h3') || {}).textContent || '',
+      include: el.querySelector('.offer-include').checked,
+      salary: (el.querySelector('.offer-salary').value || '').trim(),
+      note: (el.querySelector('.offer-note').value || '').trim(),
+      dims
+    };
+  });
+}
+function offerMatrixHTML(cands){
+  const inc = cands.filter(c => c.include);
+  if(!inc.length){
+    return `<section class="rl-card p-6 text-center">
+      <p class="text-[14px]" style="color:var(--ink-3);">勾选上方候选卡片，在这里生成对比矩阵。</p>
+    </section>`;
+  }
+  const { w, sum } = offerWeightsAll();
+  const wnorm = d => (Number(w[d.key]) || 0) / sum;
+  const totals = inc.map(c => {
+    let t = 0;
+    OFFER_DIMS.forEach(d => { t += wnorm(d) * ((c.dims[d.key] || 0) / 5); });
+    return Math.round(t * 1000) / 10;
+  });
+  const best = Math.max.apply(null, totals);
+  const bestIdx = best > 0 ? totals.indexOf(best) : -1;
+  const tint = 'rgba(0,113,227,0.06)';
+  const th = (c, k) => `<th scope="col" style="text-align:center;padding:10px 12px;${k === bestIdx && bestIdx >= 0 ? 'background:' + tint + ';' : ''}"><span class="text-[13px] font-semibold" style="color:var(--ink-1);">${esc(c.company)}</span></th>`;
+  const salaryCells = inc.map(c => `<td style="padding:10px 12px;text-align:center;color:var(--ink-2);font-size:12px;white-space:nowrap;">${c.salary ? esc(c.salary) : '—'}</td>`).join('');
+  const rows = OFFER_DIMS.map(d => {
+    const cells = inc.map((c, k) => {
+      const v = c.dims[d.key] || 0;
+      return `<td style="padding:10px 12px;text-align:center;color:${v ? '#FF9500' : 'var(--ink-3)'};font-weight:${v ? 600 : 400};${k === bestIdx && bestIdx >= 0 ? 'background:' + tint + ';' : ''}">${v ? v + ' / 5' : '—'}</td>`;
+    }).join('');
+    return `<tr class="border-b border-black/5">
+      <td style="padding:10px 12px;text-align:left;color:var(--ink-2);white-space:nowrap;">${d.label} <span class="tabular text-[11px]" style="color:var(--ink-3);">${Math.round(wnorm(d) * 100)}%</span></td>
+      ${cells}
+    </tr>`;
+  }).join('');
+  const totalCells = inc.map((c, k) => {
+    const isB = totals[k] > 0 && totals[k] === best;
+    return `<td style="padding:12px;text-align:center;font-weight:700;font-size:15px;color:var(--ink-1);white-space:nowrap;${isB ? 'background:rgba(0,113,227,0.10);' : ''}">${totals[k] > 0 ? totals[k].toFixed(1) : '—'}${isB ? ' 🏆' : ''}</td>`;
+  }).join('');
+  let conclusion = '';
+  if(best > 0){
+    const b = inc.find((c, k) => totals[k] === best);
+    const rest = inc.filter((c, k) => totals[k] !== best).map(c => esc(c.company)).join('、');
+    conclusion = `按当前权重，综合加权得分最高的是 <span class="font-semibold" style="color:#248A3D;">${esc(b.company)}（${totals[inc.indexOf(b)].toFixed(1)} 分）</span>`
+      + (rest ? '，其次 ' + rest + '。' : '。');
+    if(!inc.every(c => OFFER_DIMS.every(d => c.dims[d.key] > 0))) conclusion += ' 仍有维度未打分，补全后总分才完整。';
+  }
+  return `
+  <section class="rl-card p-5 sm:p-6">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <h2 class="eyebrow">加权对比矩阵</h2>
+      <p class="text-[12px] tabular" style="color:var(--ink-3);">共 ${inc.length} 个 Offer 参与对比</p>
+    </div>
+    <div class="overflow-x-auto mt-4">
+      <table class="w-full text-[13px] min-w-[560px]">
+        <thead>
+          <tr class="border-b border-black/10">
+            <th scope="col" style="text-align:left;padding:10px 12px;color:var(--ink-3);font-weight:500;white-space:nowrap;">维度 / 权重</th>
+            ${inc.map(th).join('')}
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="border-b border-black/5">
+            <td style="padding:10px 12px;color:var(--ink-2);white-space:nowrap;" class="text-[12px]">薪资（手动录入）</td>
+            ${salaryCells}
+          </tr>
+          ${rows}
+          <tr>
+            <td style="padding:12px;color:var(--ink-1);white-space:nowrap;" class="text-[13px] font-semibold">加权总分</td>
+            ${totalCells}
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    ${conclusion ? `<p class="mt-4 text-[14px] leading-relaxed" style="color:var(--ink-1);">🏆 ${conclusion}</p>` : ''}
+    <p class="mt-3 text-[11px] leading-relaxed" style="color:var(--ink-3);">⚠ 打分与权重只是你基于当前信息的主观量化，仅供参考，不代表真实职级、薪酬或团队状况；最终决定请结合面试中核实到的信息。</p>
+  </section>`;
+}
+function offerRenderMatrix(){ $('offerMatrix').innerHTML = offerMatrixHTML(offerMatrixInputs()); }
+function offerSaveFromDOM(){
+  const list = offerScores();
+  const has = {};
+  offerMatrixInputs().forEach(c => {
+    const hasVal = OFFER_DIMS.some(d => c.dims[d.key] > 0) || c.salary || c.note;
+    if(!hasVal) return;
+    has[c.tid] = true;
+    let rec = list.find(s => s.trackId === c.tid);
+    if(!rec){ rec = { trackId: c.tid, salary: '', note: '', dims: { pay: 0, growth: 0, commute: 0, team: 0, vibe: 0 } }; list.push(rec); }
+    rec.salary = c.salary; rec.note = c.note; rec.dims = c.dims;
+  });
+  Store.set(OFFER_KEY, list.filter(s => has[s.trackId]));
+}
+function renderOffer(){
+  const cands = offerCandidates();
+  $('offerCandidates').innerHTML = cands.map(c => offerCandidateHTML(c.t, c.s, c.i)).join('');
+  if(!$('offerWeights').querySelector('.offer-wslider')){
+    $('offerWeights').innerHTML = offerWeightsHTML();
+    offerRefreshWvals();
+  }
+  if(cands.length){
+    $('offerEmpty').innerHTML = '';
+    offerRenderMatrix();
+  } else {
+    $('offerEmpty').innerHTML = offerEmptyHTML();
+    $('offerMatrix').innerHTML = '';
+  }
+  if(offerSpotId){
+    const card = $('offerCandidates').querySelector('[data-tid="' + offerSpotId + '"]');
+    if(card){
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setTimeout(() => { card.style.boxShadow = ''; }, 1600);
+    }
+    offerSpotId = null;
+  }
+}
+// 事件绑定（P12）
+$('tabOffer').addEventListener('click', tabOffer);
+$('btnOfferBack').addEventListener('click', tabAnalyze);
+$('btnOfferJumpBoard').addEventListener('click', tabBoard);
+$('btnCompareOffer').addEventListener('click', tabOffer);
+$('btnWeightsReset').addEventListener('click', () => {
+  Store.del(OFFER_W_KEY);
+  $('offerWeights').innerHTML = offerWeightsHTML();
+  offerRefreshWvals();
+  offerRenderMatrix();
+  showToast('已恢复默认权重');
+});
+$('offerCandidates').addEventListener('click', (e) => {
+  const sb = e.target.closest('.star-btn');
+  if(!sb) return;
+  const wrap = sb.closest('.offer-stars');
+  if(!wrap) return;
+  const v = +sb.dataset.sval;
+  paintStars(wrap, v, wrap.parentNode.querySelector('.offer-dv'));
+  const dv = wrap.parentNode.querySelector('.offer-dv');
+  dv.textContent = v ? (v + ' 分') : '待打分';
+  dv.style.color = v ? '#FF9500' : 'var(--ink-3)';
+  offerSaveFromDOM();
+  offerRenderMatrix();
+});
+$('offerCandidates').addEventListener('input', (e) => {
+  if(e.target.classList.contains('offer-salary') || e.target.classList.contains('offer-note')){
+    offerSaveFromDOM(); offerRenderMatrix();
+  }
+});
+$('offerCandidates').addEventListener('change', (e) => {
+  if(e.target.classList.contains('offer-include')) offerRenderMatrix();
+});
+$('offerWeights').addEventListener('input', (e) => {
+  if(!e.target.classList.contains('offer-wslider')) return;
+  const w = Object.assign({}, OFFER_DIMS.reduce((a, d) => (a[d.key] = 0, a), {}), OFFER_W_DEFAULT, Store.get(OFFER_W_KEY) || {});
+  w[e.target.dataset.dim] = +e.target.value;
+  Store.set(OFFER_W_KEY, w);
+  offerRefreshWvals();
+  offerRenderMatrix();
+});
+$('offerEmpty').addEventListener('click', (e) => {
+  if(e.target.closest('#btnOfferEmptyGo')) tabBoard();
 });
 // 初始进入：分析视图激活
 tabAnalyze();
