@@ -451,6 +451,7 @@ img, video { max-width: 100%; height: auto; }
     <div class="flex items-center justify-between mt-8 mb-2">
       <h2 class="eyebrow"><span class="tabular font-semibold" style="color:var(--accent);">02</span> · 我的简历文本</h2>
       <div class="flex items-center gap-1">
+        <button id="btnResumeLib" class="textlink" type="button" title="保存多份简历，一键载入使用">简历库</button>
         <button id="btnImport" class="textlink" type="button" title="支持 PDF / Word / Excel（.doc 请另存为 .docx）">导入文件</button>
         <button id="btnClear" class="textlink" type="button">清空</button>
       </div>
@@ -479,6 +480,9 @@ img, video { max-width: 100%; height: auto; }
 
   <!-- 报告区占位（P3 起渲染内容） -->
   <section id="reportArea" class="mt-8"></section>
+
+  <!-- P13 岗位定制简历（分析成功后渲染） -->
+  <section id="tailorArea" class="mt-6"></section>
 
   </div><!-- /viewAnalyze -->
 
@@ -587,6 +591,20 @@ img, video { max-width: 100%; height: auto; }
   <div id="historyList" class="flex-1 overflow-y-auto px-6 pb-4"></div>
   <div class="px-6 py-4 border-t border-black/5">
     <button id="btnClearHistory" class="textlink w-full justify-center" type="button">清空全部</button>
+  </div>
+</aside>
+
+<!-- P13 简历库抽屉 -->
+<div id="resumeMask" class="drawer-mask" aria-hidden="true"></div>
+<aside id="resumeDrawer" class="drawer no-print" role="dialog" aria-modal="true" aria-label="简历库" aria-hidden="true">
+  <div class="flex items-center justify-between px-6 pt-6 pb-4">
+    <h2 id="resumeDrawerTitle" tabindex="-1" class="text-[17px] font-semibold" style="color:var(--ink-1);">简历库</h2>
+    <button id="btnCloseResumeDrawer" class="textlink" type="button" aria-label="关闭简历库">关闭</button>
+  </div>
+  <div id="resumeLibList" class="flex-1 overflow-y-auto px-6 pb-4"></div>
+  <div class="px-6 py-4 border-t border-black/5">
+    <button id="btnResumeSaveAs" class="btn-secondary w-full justify-center" type="button">存入当前简历到简历库</button>
+    <p class="text-[12px] text-center mt-2" style="color:var(--ink-3);">最多保存 20 份 · 新存入会自动设为「当前使用」</p>
   </div>
 </aside>
 
@@ -1721,6 +1739,124 @@ historyListEl.addEventListener('click', (e) => {
   }
 });
 
+/* ---- P13 简历库（§3.8）：多份简历保存 / 载入 / 覆盖 / 改名 / 删除 ---- */
+const RESUMES_KEY = 'resumeLensResumes';
+const ACT_KEY = 'resumeLensActiveResume';
+const resumeDrawer = $('resumeDrawer'), resumeMask = $('resumeMask'), resumeLibList = $('resumeLibList');
+let resumeLastFocused = null;
+function getResumes(){ return Store.get(RESUMES_KEY) || []; }
+function setResumes(list){ Store.set(RESUMES_KEY, list.slice(0, 20)); }
+function setActiveResume(id){ id ? Store.set(ACT_KEY, id) : Store.del(ACT_KEY); }
+function getActiveResume(){
+  const id = Store.get(ACT_KEY);
+  if(!id) return null;
+  return getResumes().find(r => r.id === id) || null;
+}
+function renderResumeLib(){
+  const list = getResumes();
+  const active = getActiveResume();
+  if(!list.length){
+    resumeLibList.innerHTML = `<div class="py-12 text-center">
+      <p class="text-[15px] font-medium" style="color:var(--ink-2);">还没有保存的简历</p>
+      <p class="text-[13px] mt-1" style="color:var(--ink-3);">把你的简历存进来，下次分析一键载入</p>
+    </div>`;
+    return;
+  }
+  resumeLibList.innerHTML = list.map(r => {
+    const isActive = active && active.id === r.id;
+    return `<div class="py-3.5 border-b border-black/5">
+      <div class="flex items-center gap-2">
+        <p class="flex-1 text-[14px] font-medium truncate" style="color:var(--ink-1);">${esc(r.name)}</p>
+        ${isActive ? '<span class="text-[11px] px-2 py-0.5 rounded-full shrink-0" style="background:rgba(0,113,227,0.10);color:#0066CC;">当前使用</span>' : ''}
+      </div>
+      <p class="text-[12px] mt-0.5" style="color:var(--ink-3);">${countCharsString(r.text)} 字 · ${relTime(r.ts)}</p>
+      <div class="flex items-center gap-3 text-[13px] mt-1.5">
+        <button type="button" class="textlink btn-rl-load" data-id="${r.id}">载入</button>
+        <button type="button" class="textlink btn-rl-cover" data-id="${r.id}" title="用当前输入框内容覆盖这份简历">覆盖</button>
+        <button type="button" class="textlink btn-rl-rename" data-id="${r.id}">改名</button>
+        <button type="button" class="textlink btn-rl-del" data-id="${r.id}" style="color:var(--red);">删除</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+function openResumeDrawer(){
+  renderResumeLib();
+  resumeLastFocused = document.activeElement;
+  resumeDrawer.classList.add('open'); resumeMask.classList.add('open');
+  resumeDrawer.setAttribute('aria-hidden', 'false'); resumeMask.setAttribute('aria-hidden', 'false');
+  document.body.style.overflow = 'hidden';
+  $('resumeDrawerTitle').focus();
+}
+function closeResumeDrawer(){
+  resumeDrawer.classList.remove('open'); resumeMask.classList.remove('open');
+  resumeDrawer.setAttribute('aria-hidden', 'true'); resumeMask.setAttribute('aria-hidden', 'true');
+  document.body.style.overflow = '';
+  if(resumeLastFocused instanceof HTMLElement && resumeLastFocused.isConnected) resumeLastFocused.focus();
+}
+resumeDrawer.addEventListener('keydown', (e) => {
+  if(e.key === 'Escape'){ closeResumeDrawer(); return; }
+  if(e.key !== 'Tab') return;
+  const els = Array.from(resumeDrawer.querySelectorAll('button:not([disabled])'));
+  if(!els.length) return;
+  if(e.shiftKey && document.activeElement === els[0]){ e.preventDefault(); els[els.length - 1].focus(); }
+  else if(!e.shiftKey && document.activeElement === els[els.length - 1]){ e.preventDefault(); els[0].focus(); }
+});
+resumeMask.addEventListener('click', closeResumeDrawer);
+$('btnCloseResumeDrawer').addEventListener('click', closeResumeDrawer);
+$('btnResumeLib').addEventListener('click', openResumeDrawer);
+$('btnResumeSaveAs').addEventListener('click', () => {
+  const v = resumeInput.value.trim();
+  if(!v){ showToast('当前输入框是空的，先粘贴或导入一份简历吧'); return; }
+  const list = getResumes();
+  const id = 'r' + Date.now();
+  list.unshift({ id, name: '我的简历 ' + (list.length + 1), text: v, ts: Date.now() });
+  setResumes(list);
+  setActiveResume(id);
+  renderResumeLib();
+  showToast('已存入简历库，并设为当前使用');
+});
+resumeLibList.addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-id]');
+  if(!btn) return;
+  const list = getResumes();
+  const r = list.find(x => x.id === btn.dataset.id);
+  if(!r) return;
+  if(btn.classList.contains('btn-rl-load')){
+    resumeInput.value = r.text;
+    resumeInput.dispatchEvent(new Event('input'));
+    setActiveResume(r.id);
+    closeResumeDrawer();
+    showToast('已载入「' + r.name + '」');
+    return;
+  }
+  if(btn.classList.contains('btn-rl-cover')){
+    const v = resumeInput.value.trim();
+    if(!v){ showToast('当前输入框是空的，没有可覆盖的内容'); return; }
+    r.text = v; r.ts = Date.now();
+    setResumes(list); setActiveResume(r.id);
+    renderResumeLib();
+    showToast('已用当前内容覆盖「' + r.name + '」');
+    return;
+  }
+  if(btn.classList.contains('btn-rl-rename')){
+    const nm = prompt('新的简历名称：', r.name);
+    if(nm === null) return;
+    const t = nm.trim();
+    if(!t){ showToast('名称不能为空'); return; }
+    r.name = t.slice(0, 20);
+    setResumes(list);
+    renderResumeLib();
+    return;
+  }
+  if(btn.classList.contains('btn-rl-del')){
+    if(!confirm('删除「' + r.name + '」？此操作不可恢复。')) return;
+    setResumes(list.filter(x => x.id !== r.id));
+    if(Store.get(ACT_KEY) === r.id) setActiveResume(null);
+    renderResumeLib();
+    showToast('已删除');
+  }
+});
+
 /* ---- 报告区事件委托：复制/打印/重置基线 P7 ---- */
 reportArea.addEventListener('click', (e) => {
   const cr = e.target.closest('#btnCopyReport');
@@ -1794,6 +1930,7 @@ btnAnalyze.addEventListener('click', () => {
 
   // 骨架屏
   reportArea.innerHTML = skeletonHTML();
+  $('tailorArea').innerHTML = '';
   reportArea.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   const skTip = document.getElementById('skTip');
   let si = 0;
@@ -1817,6 +1954,7 @@ btnAnalyze.addEventListener('click', () => {
       reportArea.innerHTML = reportHTML(result, base);
       reportArea.style.opacity = '1';
       startReportAnims(result);
+      renderTailorCard(result, jdVal);
       btnAnalyze.disabled = false;
       btnAnalyze.innerHTML = original;
       if(!base) saveBaseline(result); // 首次成功分析自动存基线
@@ -2622,6 +2760,123 @@ $('offerEmpty').addEventListener('click', (e) => {
   if(e.target.closest('#btnOfferEmptyGo')) tabBoard();
 });
 // 初始进入：分析视图激活
+/* ==========================================================
+   P13 岗位定制简历（§3.8）：分析后一键生成 + 可编辑 + 导出
+   ========================================================== */
+function buildTailorText(rs, hits, miss, quant){
+  const L = [];
+  L.push('【针对本 JD 的自荐亮点】');
+  if(hits.length) L.push('本岗位看重：' + hits.join('、') + '。我的简历已直接命中以上关键词，可作为投递第一屏反复点题的素材。');
+  else L.push('本岗位关键词与本简历交集较少，建议参考下方「待补强」逐条补充。');
+  if(quant) L.push('量化成果佐证：' + quant.replace(/\s+/g, ' ').trim());
+  else L.push('建议补充至少一句量化成果（如「负责 X，整体提升 Y%」），这是最有力的自荐证据。');
+  L.push('');
+  const blocks = rs.split(/\n\s*\n/).map(b => b.trim()).filter(Boolean);
+  const hitBlocks = [], otherBlocks = [];
+  for(const b of blocks){
+    const joined = removeNoise(b);
+    (hits.some(k => joined.includes(removeNoise(k))) ? hitBlocks : otherBlocks).push(b);
+  }
+  if(hitBlocks.length){
+    L.push('【核心经历（已命中 JD 关键词，建议优先展开）】');
+    L.push(hitBlocks.join('\n\n'));
+    L.push('');
+  }
+  if(otherBlocks.length){
+    L.push('【其余经历（保持原文，按需精简）】');
+    L.push(otherBlocks.join('\n\n'));
+    L.push('');
+  }
+  if(miss.length){
+    L.push('【待补强（针对本 JD 缺失项，逐条补充）】');
+    miss.forEach(k => L.push(k + '：请补充 1-2 句与该关键词相关的经历/技能描述（此行为模板，可直接改写）。'));
+    L.push('');
+  }
+  L.push('——');
+  L.push('以上内容由「简历透镜」根据原文与 JD 自动整理，请核对后使用 · 得分仅供参考');
+  return L.join('\n');
+}
+window.__tailorText = '';
+function renderTailorCard(r, jdText){
+  const el = $('tailorArea');
+  const hits = (r.matchedKeywords || []).map(k => k.word);
+  const miss = (r.missingKeywords || []).map(k => k.word);
+  el.innerHTML = `
+  <section class="rl-card p-5 sm:p-8 trl">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <p class="eyebrow">岗位定制</p>
+        <h2 class="text-[20px] font-semibold mt-1" style="color:var(--ink-1);">生成针对这份 JD 的专属简历</h2>
+        <p class="text-[13px] mt-1" style="color:var(--ink-2);">自动整理命中亮点与缺失补充，生成后可编辑再导出</p>
+      </div>
+      <button id="btnTailorGen" type="button" class="flex items-center gap-1.5 px-5 py-2.5 rounded-full text-[14px] font-medium text-white trl"
+        style="background-color:var(--accent);background-image:linear-gradient(135deg,#0071E3,#0A84FF);box-shadow:0 4px 14px rgba(0,113,227,0.35);height:40px;"
+        onmouseover="this.style.filter='brightness(1.06)'" onmouseout="this.style.filter=''"
+        onmousedown="this.style.transform='scale(.98)'" onmouseup="this.style.transform='scale(1)'">生成定制简历</button>
+    </div>
+    <div id="tailorOut" class="mt-5">
+      <p class="text-[13px]" style="color:var(--ink-2);">已命中 ${hits.length} 个关键词、缺失 ${miss.length} 个 —— 点击上方按钮，一键生成可编辑的岗位专属版本。</p>
+    </div>
+  </section>`;
+  $('btnTailorGen').addEventListener('click', () => genTailor(r, jdText));
+}
+function genTailor(r, jdText){
+  const company = guessJobCompany(jdText);
+  const rs = resumeInput.value.trim();
+  const hits = (r.matchedKeywords || []).map(k => k.word);
+  const miss = (r.missingKeywords || []).map(k => k.word);
+  const quant = (r.quantified && r.quantified.length) ? r.quantified[0] : '';
+  window.__tailorText = buildTailorText(rs, hits, miss, quant);
+  const baseName = '定制简历-' + (company || '岗位');
+  $('tailorOut').innerHTML = `
+    <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+      <p class="text-[13px]" style="color:var(--ink-3);">定制对象：${esc(company || '该岗位')} · 内容可随意修改</p>
+      <div class="flex items-center gap-3 text-[13px]">
+        <button id="btnTailorReroll" class="textlink" type="button">重新生成</button>
+        <button id="btnTailorCopy" class="textlink" type="button">复制</button>
+        <button id="btnTailorTxt" class="textlink" type="button">下载 .txt</button>
+        <button id="btnTailorDoc" class="textlink" type="button">下载 Word</button>
+      </div>
+    </div>
+    <textarea id="tailorText" rows="18" aria-label="定制简历内容，可编辑">${esc(window.__tailorText)}</textarea>
+    <p class="text-[12px] mt-2" style="color:var(--ink-3);">Word 导出为 .doc 格式，Word / WPS 可直接打开编辑 · 内容仅供参考，投递前请自行核对。</p>`;
+  const ta = $('tailorText');
+  ta.addEventListener('input', () => { window.__tailorText = ta.value; });
+  $('btnTailorReroll').addEventListener('click', () => genTailor(r, jdText));
+  $('btnTailorCopy').addEventListener('click', () => copyText(window.__tailorText, '定制简历已复制'));
+  $('btnTailorTxt').addEventListener('click', () => { downloadText(baseName + '.txt', window.__tailorText); });
+  $('btnTailorDoc').addEventListener('click', () => { downloadWord(baseName + '.doc', window.__tailorText); });
+}
+function downloadBlob(filename, blob){
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+function downloadText(filename, text){
+  downloadBlob(filename, new Blob([text], { type: 'text/plain;charset=utf-8' }));
+  showToast('已下载 ' + filename);
+}
+function downloadWord(filename, text){
+  const htmlBody = String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+  const html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word">' +
+    '<head><meta charset="utf-8"><title>' + filename + '</title>' +
+    '<style>body{font-family:"Microsoft YaHei",sans-serif;font-size:12pt;line-height:1.8;color:#222;}p{margin:6px 0;}</style>' +
+    '</head><body>' + htmlBody + '</body></html>';
+  downloadBlob(filename, new Blob(['\ufeff' + html], { type: 'application/msword' }));
+  showToast('已下载 ' + filename + '（可用 Word / WPS 打开）');
+}
+/* 开机回填激活简历（输入框为空时） */
+(function(){
+  const active = getActiveResume();
+  if(active && !resumeInput.value.trim()){
+    resumeInput.value = active.text;
+    resumeInput.dispatchEvent(new Event('input'));
+  }
+})();
 tabAnalyze();
 </script>
 </body>
