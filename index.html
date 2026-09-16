@@ -169,7 +169,7 @@
       </span>
       <div class="text-[17px] font-semibold tracking-tight" style="color:var(--ink-1);">简历透镜 <span class="font-normal" style="color:var(--ink-3);">ResumeLens</span></div>
     </div>
-    <div class="flex items-center gap-1">
+    <div class="flex flex-wrap items-center gap-1">
       <!-- P10 顶栏 tab：简历分析 / 求职看板（桌面端） -->
       <nav class="items-center p-1 rounded-full hidden sm:flex" id="topTabs" aria-label="功能切换"
         style="background:rgba(0,0,0,0.045);">
@@ -265,11 +265,11 @@
           <h1 class="text-[24px] sm:text-[28px] font-semibold tracking-tight leading-tight mt-1" style="color:var(--ink-1);">投递与跟进，一处掌握</h1>
           <p class="text-[14px] mt-2" style="color:var(--ink-2);">跟踪投递状态、面试进度与结果，数据仅存本机浏览器。</p>
         </div>
-        <div class="flex items-center gap-2">
-          <button id="btnBoardBack" class="textlink sm:hidden" type="button">‹ 返回分析</button>
-          <button id="btnTrackFromJd" class="textlink" type="button" title="将当前 JD 保存为一条投递记录（需先复制 JD 后使用）">从当前 JD 记录</button>
-          <button id="btnCompareOffer" class="textlink" type="button" title="查看已 OFFER 记录并对比打分">offer 对比</button>
-          <button id="btnAddTrack" class="flex items-center gap-1.5 px-5 py-2.5 rounded-full text-[14px] font-medium text-white trl"
+        <div class="flex flex-wrap items-center gap-2">
+          <button id="btnBoardBack" class="textlink whitespace-nowrap sm:hidden" type="button">‹ 返回分析</button>
+          <button id="btnTrackFromJd" class="textlink whitespace-nowrap" type="button" title="从当前 JD 预填岗位名，确认后保存为一条投递记录">从当前 JD 记录</button>
+          <button id="btnCompareOffer" class="textlink whitespace-nowrap" type="button" title="查看已 OFFER 记录并对比打分">offer 对比</button>
+          <button id="btnAddTrack" class="flex shrink-0 items-center gap-1.5 px-5 py-2.5 rounded-full text-[14px] font-medium text-white trl whitespace-nowrap"
             style="background-color:var(--accent);background-image:linear-gradient(135deg,#0071E3,#0A84FF);box-shadow:0 4px 14px rgba(0,113,227,0.35);height:40px;"
             onmouseover="this.style.filter='brightness(1.06)'" onmouseout="this.style.filter=''"
             onmousedown="this.style.transform='scale(.98)'" onmouseup="this.style.transform='scale(1)'">＋ 新增投递</button>
@@ -1873,8 +1873,8 @@ function saveTrack(){
 function trackFromJd(){
   const jd = jdInput.value.trim();
   if(!jd){ showToast('请先在「简历分析」粘贴 JD'); tabBoard(); return; }
-  // 从 JD 粗取岗位名：优先"职位名称：XX"，再匹配常见职位词
-  const titleMatch = jd.match(/职位(?:名称|title)?[:：]\s*([^\n，。,。]{1,16})/i);
+  // 从 JD 粗取岗位名：优先"职位名称/岗位名称：XX"，再匹配常见职位词
+  const titleMatch = jd.match(/(?:职位|岗位)(?:名称|title)?[:：]\s*([^\n，。,。]{1,16})/i);
   const kwMatch = jd.match(/((?:资深|高级|初级|中级|助理|实习生)?.{0,6}?(?:产品经理|产品运营|用户运营|增长|运营|Java|前端|后端|测试|运维|算法|数据分析师|数据分析|设计师|HRBP|市场经理|销售经理))/);
   const firstLine = jd.split('\n').map(s => s.trim()).find(s => /[\u4e00-\u9fa5]/.test(s) && s.length >= 4 && s.length <= 24);
   openTrackModal({ company:'', role: (titleMatch && titleMatch[1]) || (kwMatch && kwMatch[1]) || firstLine || '', status:'fav', date:new Date().toISOString().slice(0, 10), note:'' });
@@ -2022,7 +2022,7 @@ function guessJobCompany(jd){
   return n ? n[1] : '';
 }
 function guessJobRole(jd){
-  const titleMatch = jd.match(/职位(?:名称|title)?[:：]\s*([^\n，。,。]{1,16})/i);
+  const titleMatch = jd.match(/(?:职位|岗位)(?:名称|title)?[:：]\s*([^\n，。,。]{1,16})/i);
   const kwMatch = jd.match(/((?:资深|高级|初级|中级|助理|实习生)?.{0,6}?(?:产品经理|产品运营|用户运营|增长|运营|Java|前端|后端|测试|运维|算法|数据分析师|数据分析|设计师|HRBP|市场经理|销售经理))/);
   const firstLine = jd.split('\n').map(s => s.trim()).find(s => /[\u4e00-\u9fa5]/.test(s) && s.length >= 4 && s.length <= 24);
   return (titleMatch && titleMatch[1]) || (kwMatch && kwMatch[1]) || firstLine || '';
