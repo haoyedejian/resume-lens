@@ -650,6 +650,7 @@ function parseWorkPeriods(resume){
   return out;
 }
 const RedFlagDetector = {
+  /* v3 HR 判读模式：每条红旗附 hrThought（HR 脑内还原）/ hrProbe（面试官会怎么问）/ hrFix（抄写级改写示范） */
   detect(resumeText, ar){
     const flags = [];
     // F1 模糊表达（red）：负责类动词 ≥4 且量化句 <2
@@ -657,14 +658,20 @@ const RedFlagDetector = {
     if(verbCount >= 4 && ar.quantified.length < 2){
       flags.push({ id:'F1', level:'red', title:'模糊表达过多',
         detail:`写了 ${verbCount} 个"负责"，却没有几个数字——HR 会认为你做过，但不知道你做得多好。`,
-        advice:'把最重的 2-3 条"负责…"改写成"动作+数字结果"。' });
+        advice:'把最重的 2-3 条"负责…"改写成"动作+数字结果"。',
+        hrThought:'第一反应是心里打了个问号：这简历是不是套模板写的？四五个"负责"扫过去，一条都记不住。',
+        hrProbe:'你提到负责某项工作——具体负责的规模有多大？结果是什么？拿数字说。',
+        hrFix:`原文："负责订单模块的日常迭代"\n改为："主导订单模块改版，通过漏斗优化实现支付转化率提升 15%"` });
     }
     // F2 自我评价套话（yellow）：命中 ≥2 个套话词
     const cliches = ['吃苦耐劳','责任心强','沟通能力强','团队精神','学习能力强','抗压能力强'].filter(w => resumeText.includes(w));
     if(cliches.length >= 2){
       flags.push({ id:'F2', level:'yellow', title:'自我评价套话',
         detail:'自我评价全是套话，信息量为零。',
-        advice:'换成一句事实+数字，例如"两年内主导 3 个从 0 到 1 项目"。' });
+        advice:'换成一句事实+数字，例如"两年内主导 3 个从 0 到 1 项目"。',
+        hrThought:'这段自我评价和上一个人一模一样，"责任心强"大概十份简历有八份这么写。',
+        hrProbe:'你说自己学习能力强——上一个让你从零上手的东西是什么？学了多久、怎么证明？',
+        hrFix:'原文："自我评价：责任心强，学习能力强，沟通能力强"\n改为："自我评价：两年内从零上手 SQL 与 A/B 实验，独立完成 40 组实验并在团队内推广"' });
     }
     // F3 经历时间断档（yellow）：相邻经历段间隔 >6 个月
     const per = parseWorkPeriods(resumeText);
@@ -673,7 +680,10 @@ const RedFlagDetector = {
       if(gap > 6){
         flags.push({ id:'F3', level:'yellow', title:'经历时间断档',
           detail:`经历之间有 ${gap} 个月空档，面试大概率被问。`,
-          advice:'准备 30 秒坦然说法，落点放在回归后的状态。' });
+          advice:'准备 30 秒坦然说法，落点放在回归后的状态。',
+          hrThought:`这里空着 ${gap} 个月——不是离职就是休息，简历没说，我反正会问。`,
+          hrProbe:`${gap} 个月的空档期在做什么？这段时间对你的职业选择有什么影响？`,
+          hrFix:'原文：（两段经历之间留白 8 个月）\n改为：经历区间连写，空档期若属实，在简历中主动补一句"空档期内完成 XX 学习/项目"，掌握解释权' });
         break;
       }
     }
@@ -681,20 +691,29 @@ const RedFlagDetector = {
     if(ar.quantified.length < 2){
       flags.push({ id:'F4', level:'red', title:'量化成果缺失',
         detail:'整份简历几乎没有量化成果。',
-        advice:'每条经历末尾补一个数字，哪怕是估算口径。' });
+        advice:'每条经历末尾补一个数字，哪怕是估算口径。',
+        hrThought:'一个数字都没有，我连"这事做得多大"都判断不了——要么经历浅，要么没想清楚价值。',
+        hrProbe:'这条经历做到什么程度？覆盖多大的盘子，产生什么可衡量的结果？',
+        hrFix:'原文："负责运营活动的策划与执行"\n改为："负责大促活动节奏策划，单期触达 5 万用户，转化率环比提升 12%"' });
     }
     // F5 黑话密度（yellow）：互联网黑话 ≥3 个
     const buzz = ['赋能','抓手','闭环','颗粒度','对齐','打法','沉淀','拉通'].filter(w => resumeText.includes(w));
     if(buzz.length >= 3){
       flags.push({ id:'F5', level:'yellow', title:'黑话密度偏高',
         detail:'互联网黑话密度偏高，HR 阅读负担大。',
-        advice:'保留 1-2 个即可，其余换成大白话。' });
+        advice:'保留 1-2 个即可，其余换成大白话。',
+        hrThought:'满屏"赋能""闭环"，我可以给这篇简历做个黑话 bingo 了——但不保证看懂了你到底干了什么。',
+        hrProbe:'你说的"拉通协同"具体指什么？跟哪个团队、协作改了什么流程、省了多久？',
+        hrFix:'原文："通过中台赋能业务线，搭建增长闭环，沉淀 SOP 并拉通前后端节奏"\n改为："搭建业务线复购体系，输出月度 SOP，将前后端交付周期从 5 天缩短到 2 天"' });
     }
     // F6 内容过薄（yellow）：去空白后 <300 字
     if(resumeText.replace(/\s+/g, '').length < 300){
       flags.push({ id:'F6', level:'yellow', title:'内容过薄',
         detail:'内容太单薄，撑不起一轮面试。',
-        advice:'补充项目细节与关键动作，至少写到 300 字。' });
+        advice:'补充项目细节与关键动作，至少写到 300 字。',
+        hrThought:'全文一眼看完还不到一屏，我很难相信这份工作经历是扎实的。',
+        hrProbe:'简历里提到的这段经历，能展开讲讲背景、你的角色、以及你做的关键决策吗？',
+        hrFix:'原文："负责公众号运营"\n改为："负责公众号运营：单月产出 8 篇原创图文，通过选题复盘将打开率从 3% 提升至 7%，沉淀 1 套可复用的选题规范"' });
     }
     return flags;
   }
@@ -723,19 +742,24 @@ function maxWorkGap(rs){
 const InterviewPredictor = {
   predict(r, rs){
     const qs = [];
-    const push = (src, q, why, prep) => { if(qs.length < 3) qs.push({ src, q, why, prep }); };
+    /* v3：每条押题附 frame（回答框架）与 sample（示范应答，打码占位） */
+    const push = (src, q, why, prep, frame, sample) => { if(qs.length < 3) qs.push({ src, q, why, prep, frame, sample }); };
     const gOrder = { 技术:0, 产品:1, 运营:2, 证书:3 };
     // 1 硬性条件缺失
     for(const h of r.hardReq.miss){
       push('hard', `JD 要求${h}，但你的简历里没有体现，如果被问到你怎么回应？`,
         `JD 把它列为硬性要求，缺失时面试官几乎必然会核实。`,
-        `若确实具备，在简历教育背景或证书栏补上；若不打算补，提前准备转向相邻经验的回应。`);
+        `若确实具备，在简历教育背景或证书栏补上；若不打算补，提前准备转向相邻经验的回应。`,
+        `是 → 现状替代 → 可迁移证据 → 学习计划（四步）`,
+        `"目前确实没有直接从事${h}，但我在〔相近项目〕里做过〔相近能力〕，当时达成了〔数字结果〕。我正在通过〔课程/考证〕补足这一块，预计〔时间〕内上手。"`);
     }
     // 2 年限差距（act<req）
     if(r.years.req != null && r.years.act < r.years.req){
       push('years', `JD 要求 ${r.years.req} 年经验，你目前约 ${r.years.act} 年，怎么弥补这个差距？`,
         `面试官会按年限做第一轮筛选，差距会被直接追问。`,
-        `用成果密度回答，而不是年限长度——突出独立成事的能力。`);
+        `用成果密度回答，而不是年限长度——突出独立成事的能力。`,
+        `承认差距 → 用高于年限的成果密度举证 → 落到岗位价值`,
+        `"我的累计年限是 ${r.years.act} 年，比 JD 少了 ${Math.max(r.years.req - r.years.act, 1)} 年。但我从第 ${Math.min(r.years.act, 1)} 年开始就独立负责〔核心模块〕，年迭代交付可达〔数量〕，覆盖了这条岗位要求的〔关键职责〕。年限差的部分，我想用开工后首季度的〔目标〕来证明。"`);
     }
     // 3 高权重缺失关键词（剔除硬性已覆盖词，技术>产品>运营取前 2）
     const hardNorm = new Set(r.hardReq.miss.map(h => removeNoise(h)));
@@ -744,34 +768,44 @@ const InterviewPredictor = {
     for(const k of missKw.slice(0, 2)){
       push('kw', `JD 很看重${k.word}，但简历里没提到——能聊聊相关经历吗？`,
         `JD 里明确出现「${k.word}」，大概率是被重点考察的能力。`,
-        `有真实经历就补充进简历；没有就准备一段"可迁移技能"的诚实回答。`);
+        `有真实经历就补充进简历；没有就准备一段"可迁移技能"的诚实回答。`,
+        `有经历：一句话场景 → 具体动作 → 数字结果；没有：承认 + 相邻场景迁移 + 学习路径`,
+        `"简历里${k.word}写得不多，但我在〔项目〕中做过与之强相关的〔动作〕，结果〔数字〕。如果上手，我会沿这套方法先跑通最小闭环再放大。"`);
     }
     // 4 模糊表述追问（联动红旗 F1）
     if(r.redFlags.some(f => f.id === 'F1')){
       const s = extractVagueSentence(rs);
       push('f1', `你简历里写了"${s}"，但没有数字——具体提升了多少？`,
         `HR 看到"负责"却看不到数字，会怀疑这条经历的分量。`,
-        `提前准备 2-3 个可说的数字，哪怕是估算口径。`);
+        `提前准备 2-3 个可说的数字，哪怕是估算口径。`,
+        `STAR 精简版：当时背景 → 我的动作 → 量化结果（哪怕估算口径 + 口径说明）`,
+        `"那是〔时间〕的事，当时业务背景是〔一句话〕。我做了〔核心动作〕，最直接的结果是〔数字〕——口径是〔怎么统计的〕。如果再给我一次机会，我会在〔某环节〕做〔优化〕。"`);
     }
     // 5 核心技能深挖（命中的最高权重词）
     if(r.matchedKeywords.length){
       const top = r.matchedKeywords.slice().sort((a, b) => (b.weight || 0) - (a.weight || 0))[0];
       push('deep', `你提到了${top.word}，请用 STAR 讲一个最有代表性的案例。`,
         `你在简历里写了${top.word}，面试官想确认你是真用过还是只是提到。`,
-        `准备一个完整 STAR 案例，包含数字结果。`);
+        `准备一个完整 STAR 案例，包含数字结果。`,
+        `STAR：情境 → 任务 → 行动 → 结果（行动要具体到你的决策，结果要有数字）`,
+        `"情境：〔项目背景与约束〕。任务：我要在〔期限/资源〕内达成〔目标〕。行动：我选择〔方案〕而非〔替代方案〕，理由是〔判断依据〕，落地时〔关键细节〕。结果：〔数字结果〕，沉淀了〔可复用资产〕。"`);
     }
     // 6 时间断档（联动红旗 F3）
     const gap = maxWorkGap(rs);
     if(gap > 6){
       push('f3', `两段经历之间有 ${gap} 个月空档，能解释一下吗？`,
         `经历断档是面试必问题，空档期做什么会被放大追问。`,
-        `准备 30 秒的坦然说法，落点放在"回归后的状态"。`);
+        `准备 30 秒的坦然说法，落点放在"回归后的状态"。`,
+        `事实简述 → 期间做了什么 → 这段经历带来的改变 → 回归后状态`,
+        `"那 ${gap} 个月我主要在做〔学习/家庭事务/休整〕，期间完成了〔具体事项〕。这段经历让我更清楚自己适合什么，所以回归后我有意选择了〔方向〕，状态比之前更稳定。"`);
     }
     // 兜底：至少 1 条自我介绍
     if(qs.length === 0){
       push('fallback', `请用 1 分钟介绍自己，并突出你与这个岗位的匹配点。`,
         `自我介绍几乎总是面试的第一问，开场即定调。`,
-        `准备一句话版本与一分钟版本，突出与 JD 匹配的经历。`);
+        `准备一句话版本与一分钟版本，突出与 JD 匹配的经历。`,
+        `现在 → 相关经历与成果 → 为什么适合这个岗位 → 为什么是现在`,
+        `"我是〔当前角色〕，过去〔年限〕重点在做〔与岗位最相关的一件事〕，拿过〔一个最硬的数字结果〕。这个岗位需要的〔能力 1〕和〔能力 2〕，正好对应我做过的事，所以我很想在这个阶段加入〔公司/团队〕。"`);
     }
     return qs.slice(0, 3);
   }
@@ -1123,10 +1157,23 @@ function reportHTML(r, base){
       </div>
       <p class="text-[14px] mt-2 leading-relaxed" style="color:var(--ink-2);">${esc(f.detail)}</p>
       <p class="text-[13px] mt-1.5 leading-relaxed" style="color:var(--ink-3);">建议：${esc(f.advice)}</p>
+      ${f.hrThought ? `
+      <div class="mt-3 pt-3" style="border-top:1px dashed rgba(0,0,0,0.07);">
+        <p class="text-[12px] font-medium" style="color:var(--ink-3);">🧠 HR 脑内还原</p>
+        <p class="text-[13px] mt-1 leading-relaxed" style="color:var(--ink-2);">${esc(f.hrThought)}</p>
+      </div>
+      <div class="mt-2" style="padding-left:10px;border-left:2px solid ${f.level === 'red' ? 'rgba(255,59,48,0.35)' : 'rgba(255,149,0,0.4)'};">
+        <p class="text-[12px] font-medium" style="color:var(--ink-3);">面试官大概率会问</p>
+        <p class="text-[13px] mt-1 leading-relaxed" style="color:var(--ink-2);">${esc(f.hrProbe)}</p>
+      </div>
+      <div class="mt-2 rounded-lg p-3" style="background:linear-gradient(180deg,#FBFBFD,#F5F5F7);">
+        <p class="text-[12px] font-medium" style="color:var(--ink-3);">✏️ 改法示范</p>
+        <p class="text-[13px] mt-1 leading-relaxed whitespace-pre-line tabular" style="color:var(--ink-2);">${esc(f.hrFix)}</p>
+      </div>` : ''}
     </div>`).join('');
   const iv = r.interview || [];
   const ivCards = iv.map((q, i) => {
-    const copy = 'Q' + (i+1) + ' ' + q.q + '\n为什么会问：' + q.why + '\n准备要点：' + q.prep;
+    const copy = 'Q' + (i+1) + ' ' + q.q + '\n为什么会问：' + q.why + '\n回答框架：' + (q.frame || '') + '\n示范应答：' + (q.sample || '') + '\n准备要点：' + q.prep;
     return `
     <article class="relative bg-white rounded-[12px] pl-6 pr-4 pt-6 pb-5 rise-in" style="box-shadow:inset 0 0 0 1px rgba(0,0,0,0.06);background:linear-gradient(180deg,#FBFBFD,#FFFFFF);--i:${i}">
       <span class="tabular absolute top-5 left-5 w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-[12px] sm:text-[13px] font-semibold" style="background:rgba(0,122,255,0.10);color:#0066CC;">Q${i+1}</span>
@@ -1136,8 +1183,14 @@ function reportHTML(r, base){
       </div>
       <p class="text-[13px] mt-4" style="color:var(--ink-3);">为什么会问</p>
       <p class="text-[15px] mt-0.5 leading-relaxed" style="color:var(--ink-2);">${esc(q.why)}</p>
+      <div class="mt-3 rounded-lg p-3" style="background:linear-gradient(180deg,#F0F7FF,#E8F1FC);">
+        <p class="text-[12px] font-medium" style="color:#0066CC;">🧭 回答框架</p>
+        <p class="text-[14px] mt-1 leading-relaxed" style="color:var(--ink-1);">${esc(q.frame || '')}</p>
+      </div>
+      <p class="text-[13px] mt-3" style="color:var(--ink-3);">示范应答（打码处替换成你的经历）</p>
+      <p class="text-[14px] mt-0.5 leading-relaxed" style="color:var(--ink-2);">${esc(q.sample || '')}</p>
       <p class="text-[13px] mt-3" style="color:var(--ink-3);">准备要点</p>
-      <p class="text-[15px] mt-0.5 leading-relaxed" style="color:var(--ink-2);">${esc(q.prep)}</p>
+      <p class="text-[14px] mt-0.5 leading-relaxed" style="color:var(--ink-2);">${esc(q.prep)}</p>
     </article>`;
   }).join('');
 
@@ -1199,7 +1252,7 @@ function reportHTML(r, base){
   <section class="mt-6 rl-card p-6 sm:p-8 trl" id="flagArea">
     <div class="panel-head">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3 L22 20 H2 Z" stroke="#FF3B30" stroke-width="2" stroke-linejoin="round"/><path d="M12 10 v4" stroke="#FF3B30" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="17" r="1.1" fill="#FF3B30"/></svg>
-      <p class="eyebrow">红旗检测（${flags.length} 项）</p>
+      <p class="eyebrow">红旗检测 · HR 判读（${flags.length} 项）</p>
     </div>
     ${flags.length
       ? `<div class="space-y-3">${flagCards}</div>`
@@ -1373,9 +1426,11 @@ function buildReportText(r, base){
   L.push(`维度：关键词覆盖 ${dimScore(r, 'keywords')}/100 · 经验年限 ${dimScore(r, 'years')} · 量化成果 ${dimScore(r, 'quantified')} · 硬性条件 ${dimScore(r, 'hard')} · 简历结构 ${dimScore(r, 'structure')}`);
   L.push(`命中关键词：${r.matchedKeywords.map(k => k.word).join('、') || '无'} ｜ 缺失关键词：${r.missingKeywords.map(k => k.word).join('、') || '无'}`);
   if(r.redFlags.length){
-    r.redFlags.forEach(f => L.push(`红旗 ${f.id}｜${f.title}：${f.detail}（建议：${f.advice}）`));
+    r.redFlags.forEach(f => L.push(`红旗 ${f.id}｜${f.title}：${f.detail}（建议：${f.advice}）` +
+      (f.hrThought ? `\n  HR 脑内还原：${f.hrThought}\n  面试官大概率会问：${f.hrProbe}\n  改法示范：${f.hrFix.replace(/\n/g, ' | ')}` : '')));
   } else L.push('红旗检测：未发现明显红旗');
-  r.interview.forEach((q, i) => L.push(`押题 Q${i + 1}：${q.q}；准备要点：${q.prep}`));
+  r.interview.forEach((q, i) => L.push(`押题 Q${i + 1}：${q.q}；准备要点：${q.prep}` +
+    (q.frame ? `；回答框架：${q.frame}；示范应答：${q.sample}` : '')));
   const sugs = buildSuggestions(r);
   sugs.forEach((s, i) => L.push(`建议 ${i + 1}：${s.title}；${s.body}`));
   L.push('——');
